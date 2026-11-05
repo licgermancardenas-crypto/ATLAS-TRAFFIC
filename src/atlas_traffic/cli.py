@@ -48,21 +48,41 @@ def run(
     ),
 ) -> None:
     """Procesa un clip: detección, tracking, conteo, métricas y eventos."""
-    import time
-
     from atlas_traffic.clips import get_clip, load_clips
-    from atlas_traffic.detect import crear_detector
-    from atlas_traffic.pipeline import analizar_clip, correr_clip
 
+    cfg = _cfg_con_cambios(config, modelo, imgsz)
+    c = get_clip(load_clips(cfg.rutas.clips), clip)
+    _procesar_clip(c, cfg, reusar_detecciones, max_segundos, render, debug_video, detallado=True)
+
+
+def _cfg_con_cambios(config: Path, modelo: str | None, imgsz: int | None):
     cfg = load_app_config(config)
     cambios = {k: v for k, v in {"modelo": modelo, "imgsz": imgsz}.items() if v is not None}
     if cambios:
         cfg = cfg.model_copy(update={"deteccion": cfg.deteccion.model_copy(update=cambios)})
-    c = get_clip(load_clips(cfg.rutas.clips), clip)
+    return cfg
+
+
+def _procesar_clip(
+    c,
+    cfg,
+    reusar_detecciones: bool,
+    max_segundos: float | None = None,
+    render: bool = False,
+    debug_video: bool = False,
+    detallado: bool = False,
+    detector=None,
+):
+    """Detección (salvo que se reusen las detecciones) + análisis de un clip."""
+    import time
+
+    from atlas_traffic.detect import crear_detector
+    from atlas_traffic.pipeline import analizar_clip, correr_clip
 
     t0 = time.perf_counter()
     if not reusar_detecciones:
-        detector = crear_detector(cfg.deteccion.detector, **cfg.deteccion.kwargs_motor())
+        if detector is None:
+            detector = crear_detector(cfg.deteccion.detector, **cfg.deteccion.kwargs_motor())
         with typer.progressbar(length=1, label=f"Procesando {c.id}") as barra:
 
             def progreso(i: int, total: int) -> None:
@@ -72,24 +92,24 @@ def run(
             correr_clip(c, cfg, detector, max_segundos, progreso)
     res = analizar_clip(c, cfg)
     salida = res.salida
-    typer.echo(f"Listo en {time.perf_counter() - t0:.0f}s -> {salida}")
+    typer.echo(f"{c.id}: listo en {time.perf_counter() - t0:.0f}s -> {salida}")
     if res.conteo is None:
         typer.secho(
             f"Sin geometría ({c.geometria}): no hay conteo. Marcala con "
             f"`atlas-traffic geometry --clip {c.id}`.",
             fg=typer.colors.YELLOW,
         )
-    else:
+    elif detallado:
         typer.echo("\nConteo por aproximación (cruces únicos):")
         typer.echo(res.conteo.to_string())
-    if res.intervalos is not None:
+    if detallado and res.intervalos is not None:
         cols = ["t_inicio_s", "t_fin_s", "flujo_veh_min", "flujo_peat_min", "densidad_media",
                 "velocidad_media_px"]  # fmt: skip
         typer.echo(f"\nIntervalos de {cfg.metricas.intervalo_s} s:")
         typer.echo(res.intervalos[cols].round(2).to_string(index=False))
-    if res.eventos is not None:
-        typer.echo(f"\nEventos de sentido contrario: {len(res.eventos)}")
-        if not res.eventos.empty:
+    if res.eventos is not None and (detallado or not res.eventos.empty):
+        typer.echo(f"Eventos de sentido contrario: {len(res.eventos)}")
+        if detallado and not res.eventos.empty:
             cols = ["ts", "track_id", "aproximacion", "sentido", "clase_detalle", "thumb"]
             typer.echo(res.eventos[cols].round(1).to_string(index=False))
 
@@ -113,6 +133,7 @@ def run(
         if estab is not None:
             ruta = video_estabilizado(c.archivo, estab, salida / "estabilizado.mp4")
             typer.echo(f"Video estabilizado -> {ruta}")
+    return res
 
 
 def _render_presentacion(c, cfg, salida: Path) -> None:
@@ -143,10 +164,71 @@ def _render_presentacion(c, cfg, salida: Path) -> None:
 
 
 @app.command()
-def batch(config: Path = ConfigOpt) -> None:
-    """Procesa todos los clips de clips.yaml y consolida summary.parquet."""
-    load_app_config(config)
-    _pendiente("Fase 6")
+def batch(
+    config: Path = ConfigOpt,
+    reusar_detecciones: bool = typer.Option(
+        False,
+        "--reusar-detecciones",
+        help="No correr el modelo: reanalizar sobre las detecciones existentes.",
+    ),
+    render: bool = typer.Option(False, "--render", help="Video anotado y GIF de cada clip."),
+    modelo: str | None = typer.Option(None, "--modelo", help="Pisa deteccion.modelo."),
+    imgsz: int | None = typer.Option(None, "--imgsz", help="Pisa deteccion.imgsz."),
+) -> None:
+    """Reprocesa todo el dataset de punta a punta.
+
+    1. detección y análisis de cada clip de clips.yaml;
+    2. calibración de congestión con todos los intervalos y reclasificación;
+    3. (opcional) video anotado y GIF;
+    4. consolidación en outputs/summary.parquet, tracks_todos y eventos_todos.
+    Un clip que falla no frena al resto; el comando termina con error si alguno falló.
+    """
+    import time
+
+    from atlas_traffic.aggregate import calibrar_dataset, consolidar
+    from atlas_traffic.clips import load_clips
+    from atlas_traffic.detect import crear_detector
+
+    t0 = time.perf_counter()
+    cfg = _cfg_con_cambios(config, modelo, imgsz)
+    clips = load_clips(cfg.rutas.clips)
+    typer.echo(f"Batch: {len(clips)} clips en {cfg.rutas.clips}")
+    detector = None
+    if not reusar_detecciones:
+        detector = crear_detector(cfg.deteccion.detector, **cfg.deteccion.kwargs_motor())
+    fallidos: dict[str, str] = {}
+    procesados = []
+    for c in clips:
+        if not c.archivo.exists():
+            fallidos[c.id] = f"no existe el video {c.archivo}"
+            typer.secho(f"{c.id}: {fallidos[c.id]}", fg=typer.colors.RED)
+            continue
+        try:
+            _procesar_clip(c, cfg, reusar_detecciones, detector=detector)
+            procesados.append(c)
+        except Exception as e:  # un clip roto no frena el batch
+            fallidos[c.id] = f"{type(e).__name__}: {e}"
+            typer.secho(f"{c.id}: falló ({fallidos[c.id]})", fg=typer.colors.RED)
+
+    if procesados:
+        cal = calibrar_dataset(cfg, procesados)
+        typer.echo(f"\nCalibración: {cal.calibracion.n_intervalos} intervalos -> "
+                   f"{cfg.rutas.calibracion}")  # fmt: skip
+        if render:
+            for c in procesados:
+                _render_presentacion(c, cfg, cfg.rutas.outputs / "runs" / c.id)
+        res = consolidar(cfg, procesados)
+        tabla = res.summary.groupby(["clip_id", "congestion"], dropna=False).size()
+        n_clips = res.summary["clip_id"].nunique()
+        typer.echo(f"\nsummary.parquet: {len(res.summary)} intervalos de {n_clips} clips "
+                   f"-> {res.rutas['summary']}")  # fmt: skip
+        typer.echo(tabla.rename("intervalos").to_string())
+        typer.echo(f"tracks_todos.parquet: {len(res.tracks)} objetos | "
+                   f"eventos_todos.parquet: {len(res.eventos)} eventos")  # fmt: skip
+    typer.echo(f"\nBatch terminado en {time.perf_counter() - t0:.0f}s: "
+               f"{len(procesados)} ok, {len(fallidos)} con error")  # fmt: skip
+    if fallidos:
+        raise typer.Exit(code=1)
 
 
 @app.command()
@@ -206,50 +288,27 @@ def calibrate(config: Path = ConfigOpt) -> None:
     Usa los intervalos y las velocidades de todos los clips ya procesados con `run`, y
     después reclasifica la congestión de cada uno con los umbrales nuevos.
     """
-    import numpy as np
-    import pandas as pd
-
+    from atlas_traffic.aggregate import calibrar_dataset
     from atlas_traffic.clips import load_clips
-    from atlas_traffic.config import load_geometria, save_calibracion
-    from atlas_traffic.congestion import aplicar, calibrar
 
     cfg = load_app_config(config)
-    clips = load_clips(cfg.rutas.clips)
-    intervalos, velocidades, usados, encuadres = [], {}, [], {}
-    for c in clips:
-        salida = cfg.rutas.outputs / "runs" / c.id
-        ruta_iv, ruta_vel = salida / "intervalos.parquet", salida / "velocidades_roi.parquet"
-        if not (ruta_iv.exists() and ruta_vel.exists() and c.geometria.exists()):
-            typer.secho(f"  {c.id}: sin procesar o sin geometría, se omite", fg=typer.colors.YELLOW)
-            continue
-        enc = load_geometria(c.geometria).encuadre
-        encuadres[c.id] = enc
-        intervalos.append(pd.read_parquet(ruta_iv).assign(encuadre=enc))
-        velocidades.setdefault(enc, []).append(pd.read_parquet(ruta_vel)["vel"].to_numpy())
-        usados.append(c.id)
-    if not intervalos:
-        raise typer.BadParameter("no hay clips procesados: corré `run` primero")
-    todos = pd.concat(intervalos, ignore_index=True)
-    cal = calibrar(todos, {e: np.concatenate(v) for e, v in velocidades.items()}, usados)
-    save_calibracion(cal, cfg.rutas.calibracion)
-    typer.echo(f"Calibración con {cal.n_intervalos} intervalos de {len(usados)} clips "
+    try:
+        res = calibrar_dataset(cfg, load_clips(cfg.rutas.clips))
+    except ValueError as e:
+        raise typer.BadParameter(str(e)) from e
+    cal = res.calibracion
+    for cid in res.omitidos:
+        typer.secho(f"  {cid}: sin procesar o sin geometría, se omite", fg=typer.colors.YELLOW)
+    typer.echo(f"Calibración con {cal.n_intervalos} intervalos de {len(cal.clips)} clips "
                f"-> {cfg.rutas.calibracion}")  # fmt: skip
     p90 = {k: round(v, 2) for k, v in cal.velocidad_p90_por_encuadre.items()}
     typer.echo(f"  velocidad de flujo libre (p90) por encuadre: {p90}")
     typer.echo(f"  densidad: p33={cal.densidad.p33:.2f} p66={cal.densidad.p66:.2f}")
     typer.echo(f"  velocidad normalizada: p33={cal.velocidad_norm.p33:.2f} "
                f"p66={cal.velocidad_norm.p66:.2f}")  # fmt: skip
-
-    filas = []
-    for cid in usados:
-        ruta_iv = cfg.rutas.outputs / "runs" / cid / "intervalos.parquet"
-        iv = aplicar(pd.read_parquet(ruta_iv), encuadres[cid], cal)
-        iv.to_parquet(ruta_iv, index=False)
-        filas.append(iv)
-    tabla = pd.concat(filas)[["clip_id", "t_inicio_s", "t_fin_s", "densidad_media",
-                              "velocidad_norm", "congestion"]]  # fmt: skip
+    cols = ["clip_id", "t_inicio_s", "t_fin_s", "densidad_media", "velocidad_norm", "congestion"]
     typer.echo("\nCongestión por intervalo:")
-    typer.echo(tabla.round(2).to_string(index=False))
+    typer.echo(res.intervalos[cols].round(2).to_string(index=False))
 
 
 @app.command()

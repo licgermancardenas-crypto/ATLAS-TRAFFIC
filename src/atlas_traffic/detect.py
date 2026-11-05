@@ -90,7 +90,9 @@ class FakeDetector:
     vacías. `reset()` vuelve al frame 0, como un tracker que arranca un clip nuevo.
     """
 
-    def __init__(self, guion: Iterable[Sequence[Deteccion]] = ()) -> None:
+    def __init__(self, guion: Iterable[Sequence[Deteccion]] = (), **_motor: object) -> None:
+        # **_motor: ignora los parámetros de motor de la config (modelo, imgsz...), para
+        # poder elegir `detector: fake` desde default.yaml sin tocar nada más.
         self._guion: list[list[Deteccion]] = [list(f) for f in guion]
         self._i = 0
 
