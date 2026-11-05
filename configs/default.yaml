@@ -1,0 +1,27 @@
+# Configuración general del pipeline. Validada por atlas_traffic.config.AppConfig.
+
+deteccion:
+  detector: ultralytics      # nombre en el registro de detect.py (ultralytics | fake)
+  modelo: yolov8n.pt         # yolov8n para iterar, yolov8s para la corrida final
+  dispositivo: cpu
+  confianza_min: 0.3
+  iou: 0.5
+  tracker: bytetrack.yaml
+
+metricas:
+  intervalo_s: 30            # ventana de agregación de intervalos.parquet
+
+color:
+  max_frames: 10             # frames muestreados por track
+  solape_max: 0.4            # descarta frames con solape de cajas mayor a esto
+  confianza_min: 0.5         # por debajo, color = indefinido
+
+alertas:
+  min_frames_historia: 15    # ignora tracks más cortos (ruido del tracker)
+  min_desplazamiento_px: 40  # ignora vehículos detenidos con jitter
+  frames_limpios: 3          # frames a cada lado de la línea para validar el cruce
+
+rutas:
+  clips: configs/clips.yaml
+  calibracion: configs/calibracion.yaml
+  outputs: outputs

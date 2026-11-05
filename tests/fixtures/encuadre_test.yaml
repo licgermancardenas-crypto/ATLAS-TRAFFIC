@@ -1,0 +1,13 @@
+encuadre: encuadre_test
+resolucion: [1920, 1080]
+roi: [[100, 200], [1800, 200], [1800, 1000], [100, 1000]]
+lineas:
+  - id: av_norte
+    puntos: [[600, 300], [1200, 300]]
+    sentido_positivo: entrante
+  - id: av_sur
+    puntos: [[600, 900], [1200, 900]]
+    sentido_positivo: saliente
+  - id: calle_este
+    puntos: [[1600, 400], [1600, 800]]
+    sentido_positivo: entrante

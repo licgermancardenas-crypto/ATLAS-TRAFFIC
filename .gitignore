@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Datos y salidas (pesados / privados)
+data/raw/*
+!data/raw/.gitkeep
+outputs/*
+!outputs/.gitkeep
+!outputs/samples/
+
+# Pesos de modelos
+*.pt
+*.onnx
+
+# Generados
+configs/calibracion.yaml
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

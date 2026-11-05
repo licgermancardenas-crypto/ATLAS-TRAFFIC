@@ -1,0 +1,209 @@
+"""Modelos Pydantic de configuración y carga de YAML.
+
+Cuatro archivos de configuración, cuatro modelos:
+- configs/default.yaml      -> AppConfig       (parámetros del pipeline)
+- configs/clips.yaml        -> ClipsFile       (registro de clips, ver clips.py)
+- configs/geometria/*.yaml  -> Geometria       (ROI y líneas de conteo por encuadre)
+- configs/calibracion.yaml  -> Calibracion     (umbrales de congestión, generado)
+
+Todos usan extra="forbid": un typo en el YAML es un error, no un campo ignorado.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import unicodedata
+from pathlib import Path
+from typing import Any, Literal
+
+import yaml
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+DEFAULT_CONFIG_PATH = Path("configs/default.yaml")
+
+Punto = tuple[int, int]
+Sentido = Literal["entrante", "saliente"]
+
+DIAS_SEMANA = ("lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo")
+
+
+class _Modelo(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+# --------------------------------------------------------------------------- default.yaml
+
+
+class DeteccionCfg(_Modelo):
+    detector: str = "ultralytics"  # nombre en el registro de detect.py
+    modelo: str = "yolov8n.pt"  # yolov8n para iterar, yolov8s para la corrida final
+    dispositivo: str = "cpu"
+    confianza_min: float = Field(0.3, ge=0.0, le=1.0)
+    iou: float = Field(0.5, ge=0.0, le=1.0)
+    tracker: str = "bytetrack.yaml"
+
+
+class MetricasCfg(_Modelo):
+    intervalo_s: int = Field(30, gt=0)
+
+
+class ColorCfg(_Modelo):
+    max_frames: int = Field(10, gt=0)
+    solape_max: float = Field(0.4, ge=0.0, le=1.0)
+    confianza_min: float = Field(0.5, ge=0.0, le=1.0)
+
+
+class AlertasCfg(_Modelo):
+    min_frames_historia: int = Field(15, ge=1)
+    min_desplazamiento_px: float = Field(40.0, ge=0.0)
+    frames_limpios: int = Field(3, ge=1)
+
+
+class RutasCfg(_Modelo):
+    clips: Path = Path("configs/clips.yaml")
+    calibracion: Path = Path("configs/calibracion.yaml")
+    outputs: Path = Path("outputs")
+
+
+class AppConfig(_Modelo):
+    deteccion: DeteccionCfg = DeteccionCfg()
+    metricas: MetricasCfg = MetricasCfg()
+    color: ColorCfg = ColorCfg()
+    alertas: AlertasCfg = AlertasCfg()
+    rutas: RutasCfg = RutasCfg()
+
+
+# --------------------------------------------------------------------------- clips.yaml
+
+
+def _sin_acentos(texto: str) -> str:
+    nfkd = unicodedata.normalize("NFKD", texto)
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
+
+
+class Clip(_Modelo):
+    id: str = Field(min_length=1)
+    archivo: Path
+    fecha: dt.date
+    hora_inicio: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    dia_semana: str
+    tipo_dia: Literal["habil", "finde"]
+    clima: str
+    geometria: Path
+    notas: str = ""
+
+    @field_validator("dia_semana")
+    @classmethod
+    def _normalizar_dia(cls, v: str) -> str:
+        dia = _sin_acentos(v.strip().lower())
+        if dia not in DIAS_SEMANA:
+            raise ValueError(f"dia_semana inválido: {v!r}")
+        return dia
+
+    @model_validator(mode="after")
+    def _dia_coincide_con_fecha(self) -> Clip:
+        esperado = DIAS_SEMANA[self.fecha.weekday()]
+        if self.dia_semana != esperado:
+            raise ValueError(
+                f"clip {self.id}: fecha {self.fecha} es {esperado}, no {self.dia_semana}"
+            )
+        return self
+
+
+class ClipsFile(_Modelo):
+    clips: list[Clip] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _ids_unicos(self) -> ClipsFile:
+        ids = [c.id for c in self.clips]
+        repetidos = sorted({i for i in ids if ids.count(i) > 1})
+        if repetidos:
+            raise ValueError(f"ids de clip repetidos: {repetidos}")
+        return self
+
+
+# --------------------------------------------------------------------------- geometria/*.yaml
+
+
+class Linea(_Modelo):
+    id: str = Field(min_length=1)
+    puntos: tuple[Punto, Punto]
+    sentido_positivo: Sentido  # qué significa cruzar de A hacia B
+
+    @model_validator(mode="after")
+    def _segmento_no_degenerado(self) -> Linea:
+        if self.puntos[0] == self.puntos[1]:
+            raise ValueError(f"línea {self.id}: los dos puntos son iguales")
+        return self
+
+
+class Geometria(_Modelo):
+    encuadre: str = Field(min_length=1)
+    resolucion: tuple[int, int]  # ancho, alto
+    roi: list[Punto] = Field(min_length=3)
+    lineas: list[Linea] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validar(self) -> Geometria:
+        ancho, alto = self.resolucion
+        puntos = list(self.roi) + [p for linea in self.lineas for p in linea.puntos]
+        fuera = [p for p in puntos if not (0 <= p[0] <= ancho and 0 <= p[1] <= alto)]
+        if fuera:
+            raise ValueError(f"puntos fuera de la resolución {ancho}x{alto}: {fuera}")
+        ids = [linea.id for linea in self.lineas]
+        if len(ids) != len(set(ids)):
+            raise ValueError(f"ids de línea repetidos en {self.encuadre}")
+        return self
+
+
+# --------------------------------------------------------------------------- calibracion.yaml
+
+
+class Cortes(_Modelo):
+    p33: float
+    p66: float
+
+    @model_validator(mode="after")
+    def _ordenados(self) -> Cortes:
+        if self.p33 > self.p66:
+            raise ValueError("p33 no puede ser mayor que p66")
+        return self
+
+
+class Calibracion(_Modelo):
+    """Umbrales de congestión calculados con los propios datos (brief §4)."""
+
+    velocidad_p90_por_encuadre: dict[str, float]  # flujo libre de cada vista, en px/frame
+    densidad: Cortes
+    velocidad_norm: Cortes
+    generado: dt.datetime | None = None
+
+
+# --------------------------------------------------------------------------- carga
+
+
+def read_yaml(path: Path) -> Any:
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"no existe el archivo de configuración: {path}")
+    with path.open(encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def load_app_config(path: Path = DEFAULT_CONFIG_PATH) -> AppConfig:
+    return AppConfig.model_validate(read_yaml(path))
+
+
+def load_geometria(path: Path) -> Geometria:
+    return Geometria.model_validate(read_yaml(path))
+
+
+def load_calibracion(path: Path) -> Calibracion:
+    return Calibracion.model_validate(read_yaml(path))
+
+
+def save_calibracion(cal: Calibracion, path: Path) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(cal.model_dump(mode="json"), f, sort_keys=False, allow_unicode=True)

@@ -1,0 +1,13 @@
+# Registro de clips. Se carga a mano al grabar: es la fuente de verdad del contexto.
+# Validado por atlas_traffic.config.ClipsFile (dia_semana debe coincidir con fecha).
+
+clips:
+  - id: 2026-09-15_0800_mar
+    archivo: data/raw/2026-09-15_0800.mp4
+    fecha: 2026-09-15
+    hora_inicio: "08:00"
+    dia_semana: martes
+    tipo_dia: habil
+    clima: despejado
+    geometria: configs/geometria/encuadre_a.yaml
+    notas: "hora pico mañana"
