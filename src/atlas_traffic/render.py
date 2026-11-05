@@ -31,8 +31,10 @@ def _color_id(track_id: int) -> tuple[int, int, int]:
 
 
 def _texto(img: np.ndarray, texto: str, org: tuple[int, int], color, escala: float = 0.45) -> None:
-    cv2.putText(img, texto, org, cv2.FONT_HERSHEY_SIMPLEX, escala, (0, 0, 0), 3, cv2.LINE_AA)
-    cv2.putText(img, texto, org, cv2.FONT_HERSHEY_SIMPLEX, escala, color, 1, cv2.LINE_AA)
+    grosor = 1 if escala < 0.55 else 2  # texto grande con trazo fino se lee mal
+    cv2.putText(img, texto, org, cv2.FONT_HERSHEY_SIMPLEX, escala, (0, 0, 0), grosor + 2,
+                cv2.LINE_AA)  # fmt: skip
+    cv2.putText(img, texto, org, cv2.FONT_HERSHEY_SIMPLEX, escala, color, grosor, cv2.LINE_AA)
 
 
 def _transformar(H: np.ndarray | None, puntos) -> np.ndarray:
@@ -209,4 +211,220 @@ def video_estabilizado(video: Path, estabilizacion: pd.DataFrame, salida: Path) 
     finally:
         cap.release()
         writer.release()
+    return salida
+
+
+# =========================================================================== presentación
+# Video anotado para mostrar (Fase 5). A diferencia del de debug: color por clase, cajas
+# que se ponen verdes al ser contadas, flecha del sentido de circulación permitido (no
+# del cruce positivo), panel de conteo por aproximación, insignia de congestión del
+# intervalo en curso y aviso de eventos. Se dibuja sobre el frame agrandado (`escala`)
+# para que el texto sea legible en videos chicos.
+
+COLOR_CONTADO = (80, 200, 80)
+COLOR_CONGESTION = {"LOW": (80, 180, 60), "MODERATE": (0, 170, 255), "HIGH": (40, 40, 220)}
+COLOR_EVENTO = (0, 0, 255)
+COLOR_LINEA_PRESENTACION = (0, 220, 255)
+
+
+def _flecha_permitida(img, linea: Linea, H: np.ndarray | None, escala: float) -> None:
+    """Flecha perpendicular a la línea, hacia donde circula el tránsito permitido."""
+    if linea.sentido_permitido == "ambos":
+        return
+    a, b = (np.asarray(p, dtype=np.float64) for p in linea.puntos)
+    n = np.array([-(b[1] - a[1]), b[0] - a[0]])
+    n /= np.linalg.norm(n)
+    if linea.sentido_permitido != linea.sentido_positivo:
+        n = -n
+    medio = (a + b) / 2
+    largo = max(14.0, 0.18 * float(np.hypot(*(b - a))))
+    p0, p1 = _transformar(H, [medio - 0.5 * largo * n, medio + 0.5 * largo * n]) * escala
+    cv2.arrowedLine(
+        img,
+        tuple(np.round(p0).astype(int)),
+        tuple(np.round(p1).astype(int)),
+        (255, 255, 255),
+        max(2, int(2 * escala)),
+        cv2.LINE_AA,
+        tipLength=0.4,
+    )
+
+
+def dibujar_escena(
+    frame: np.ndarray,
+    geo: Geometria,
+    H: np.ndarray | None,
+    dets: pd.DataFrame,
+    contados: set[int],
+    escala: float,
+) -> np.ndarray:
+    """ROI, líneas con flecha de sentido permitido y cajas por clase (verde = contado)."""
+    out = cv2.resize(frame, None, fx=escala, fy=escala, interpolation=cv2.INTER_LINEAR)
+    poligono = np.round(_transformar(H, geo.roi) * escala).astype(np.int32)
+    capa = out.copy()
+    cv2.fillPoly(capa, [poligono], COLOR_ROI)
+    out = cv2.addWeighted(capa, 0.10, out, 0.90, 0)
+    cv2.polylines(out, [poligono], True, COLOR_ROI, 1, cv2.LINE_AA)
+    for linea in geo.lineas:
+        pa, pb = np.round(_transformar(H, linea.puntos) * escala).astype(int)
+        cv2.line(out, tuple(pa), tuple(pb), (0, 0, 0), max(4, int(5 * escala)), cv2.LINE_AA)
+        cv2.line(out, tuple(pa), tuple(pb), COLOR_LINEA_PRESENTACION, max(2, int(3 * escala)),
+                 cv2.LINE_AA)  # fmt: skip
+        _flecha_permitida(out, linea, H, escala)
+    grosor = max(1, int(round(1.5 * escala)))
+    for r in dets.itertuples(index=False):
+        tid = int(r.track_id)
+        color = COLOR_CONTADO if tid in contados else COLOR_CLASE.get(r.clase, (200, 200, 200))
+        p1 = (int(r.x1 * escala), int(r.y1 * escala))
+        p2 = (int(r.x2 * escala), int(r.y2 * escala))
+        cv2.rectangle(out, p1, p2, color, grosor, cv2.LINE_AA)
+        _texto(out, str(tid), (p1[0], max(12, p1[1] - 4)), color, 0.35 * escala)
+    return out
+
+
+def dibujar_panel(
+    img: np.ndarray,
+    titulo: str,
+    t: float,
+    geo: Geometria,
+    conteos: dict[tuple[str, str], int],
+    ventana: dict | None,
+    escala: float,
+) -> np.ndarray:
+    """Panel superior: título, tiempo, cruces por aproximación y nivel de congestión."""
+    fs = 0.42 * escala
+    fila = int(20 * escala)
+    x = int(8 * escala)
+    alto = fila * (len(geo.lineas) + 3) + int(8 * escala)
+    out = img.copy()
+    capa = out.copy()
+    cv2.rectangle(capa, (0, 0), (int(300 * escala), alto), (20, 20, 20), -1)
+    out = cv2.addWeighted(capa, 0.65, out, 0.35, 0)
+    reloj = f"{int(t // 60):02d}:{t % 60:04.1f}"
+    _texto(out, f"ATLAS Traffic  {titulo}  {reloj}", (x, fila), (255, 255, 255), fs)
+    _texto(out, "aproximacion          entran  salen", (x, 2 * fila), (180, 180, 180), fs * 0.9)
+    for k, linea in enumerate(geo.lineas, start=3):
+        e = conteos.get((linea.id, "entrante"), 0)
+        s = conteos.get((linea.id, "saliente"), 0)
+        texto = f"{linea.id[:20]:<20} {e:>6} {s:>6}"
+        _texto(out, texto, (x, k * fila), COLOR_LINEA_PRESENTACION, fs * 0.9)
+    nivel = (ventana or {}).get("congestion")
+    if isinstance(nivel, str) and nivel in COLOR_CONGESTION:
+        y = (len(geo.lineas) + 3) * fila
+        (w, h), _ = cv2.getTextSize(nivel, cv2.FONT_HERSHEY_SIMPLEX, fs, 2)
+        cv2.rectangle(out, (x - 3, y - h - 5), (x + w + 5, y + 5), COLOR_CONGESTION[nivel], -1)
+        cv2.putText(out, nivel, (x, y), cv2.FONT_HERSHEY_SIMPLEX, fs, (255, 255, 255), 2,
+                    cv2.LINE_AA)  # fmt: skip
+        detalle = f"densidad {ventana['densidad_media']:.1f} veh"
+        _texto(out, detalle, (x + w + int(12 * escala), y), (220, 220, 220), fs * 0.85)
+    return out
+
+
+def video_anotado(
+    video: Path,
+    detecciones: pd.DataFrame,
+    geometria: Geometria,
+    salida: Path,
+    titulo: str = "",
+    estabilizacion: pd.DataFrame | None = None,
+    cruces: pd.DataFrame | None = None,
+    intervalos: pd.DataFrame | None = None,
+    eventos: pd.DataFrame | None = None,
+    escala: float = 1.5,
+) -> Path:
+    """mp4 de presentación con la escena anotada y los contadores en pantalla."""
+    cap = cv2.VideoCapture(str(video))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    tam = (int(w * escala), int(h * escala))
+    ultimo = int(detecciones["frame"].max()) if not detecciones.empty else -1
+    por_frame = dict(tuple(detecciones.groupby("frame")))
+    hs = homografias_por_frame(estabilizacion) if estabilizacion is not None else {}
+    lista_cruces = []
+    if cruces is not None and not cruces.empty:
+        columnas = ["frame", "track_id", "aproximacion", "sentido"]
+        lista_cruces = sorted(cruces[columnas].itertuples(index=False, name=None))
+    ventanas = intervalos.to_dict("records") if intervalos is not None else []
+    momentos_evento = np.array([])
+    if eventos is not None and not eventos.empty:
+        momentos_evento = eventos["frame"].to_numpy()
+    conteos: dict[tuple[str, str], int] = {}
+    contados: set[int] = set()
+    writer = cv2.VideoWriter(str(salida), cv2.VideoWriter_fourcc(*"mp4v"), fps, tam)
+    try:
+        vigentes = detecciones.iloc[0:0]
+        H_inv = None
+        for i in range(ultimo + 1):
+            ok, frame = cap.read()
+            if not ok:
+                break
+            vigentes = por_frame.get(i, vigentes)
+            if i in hs:
+                H_inv = np.linalg.inv(hs[i])
+            while lista_cruces and lista_cruces[0][0] <= i:
+                _, tid, linea_id, sentido = lista_cruces.pop(0)
+                conteos[(linea_id, sentido)] = conteos.get((linea_id, sentido), 0) + 1
+                contados.add(int(tid))
+            t = i / fps
+            ventana = next(
+                (v for v in ventanas if v["t_inicio_s"] <= t < v["t_fin_s"]),
+                ventanas[-1] if ventanas else None,
+            )
+            img = dibujar_escena(frame, geometria, H_inv, vigentes, contados, escala)
+            img = dibujar_panel(img, titulo, t, geometria, conteos, ventana, escala)
+            if momentos_evento.size and np.any(np.abs(momentos_evento - i) <= fps):
+                cv2.rectangle(img, (0, 0), (tam[0] - 1, tam[1] - 1), COLOR_EVENTO, int(6 * escala))
+                pos = (int(10 * escala), tam[1] - int(15 * escala))
+                _texto(img, "SENTIDO CONTRARIO", pos, COLOR_EVENTO, 0.7 * escala)
+            writer.write(img)
+    finally:
+        cap.release()
+        writer.release()
+    return salida
+
+
+def gif_desde_video(
+    video: Path,
+    salida: Path,
+    inicio_s: float = 0.0,
+    duracion_s: float = 8.0,
+    ancho: int = 360,
+    fps: float = 10.0,
+    colores: int = 64,
+) -> Path:
+    """GIF liviano de un tramo del video (para el README). Requiere Pillow.
+
+    Ancho chico a propósito: además de pesar poco, no deja leer patentes ni distinguir caras.
+    """
+    from PIL import Image
+
+    cap = cv2.VideoCapture(str(video))
+    fps_video = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    paso = max(1, round(fps_video / fps))
+    ini, fin = int(inicio_s * fps_video), int((inicio_s + duracion_s) * fps_video)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, ini)
+    cuadros = []
+    try:
+        for i in range(ini, fin):
+            ok, frame = cap.read()
+            if not ok:
+                break
+            if (i - ini) % paso:
+                continue
+            alto = int(frame.shape[0] * ancho / frame.shape[1])
+            chico = cv2.resize(frame, (ancho, alto), interpolation=cv2.INTER_AREA)
+            img = Image.fromarray(cv2.cvtColor(chico, cv2.COLOR_BGR2RGB))
+            cuadros.append(img)
+    finally:
+        cap.release()
+    if not cuadros:
+        raise ValueError(f"no hay cuadros entre {inicio_s} y {inicio_s + duracion_s} s")
+    # una sola paleta para todo el GIF (sacada del cuadro del medio): comprime mucho mejor
+    # que una paleta por cuadro y evita el parpadeo de colores entre cuadros
+    paleta = cuadros[len(cuadros) // 2].quantize(colors=colores, method=Image.Quantize.MEDIANCUT)
+    indexados = [c.quantize(palette=paleta, dither=Image.Dither.NONE) for c in cuadros]
+    indexados[0].save(
+        salida, save_all=True, append_images=indexados[1:], duration=int(1000 / fps), loop=0,
+        optimize=True,
+    )  # fmt: skip
     return salida

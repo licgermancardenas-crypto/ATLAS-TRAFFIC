@@ -43,6 +43,14 @@ alertas:
   min_desplazamiento_px: 40  # ignora vehículos detenidos con jitter
   frames_limpios: 3          # frames a cada lado de la línea para validar el cruce
 
+render:
+  escala: 1.5                # el video anotado se agranda para que el texto se lea
+  gif_inicio_s: 0            # tramo del GIF de muestra
+  gif_duracion_s: 6
+  gif_ancho: 320             # chico a propósito: no deja leer patentes ni ver caras
+  gif_fps: 8
+  gif_colores: 64            # paleta común; 320 px x 8 fps x 6 s ~ 4 MB
+
 rutas:
   clips: configs/clips.yaml
   calibracion: configs/calibracion.yaml

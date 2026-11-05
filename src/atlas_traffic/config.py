@@ -96,6 +96,15 @@ class AlertasCfg(_Modelo):
     frames_limpios: int = Field(3, ge=1)
 
 
+class RenderCfg(_Modelo):
+    escala: float = Field(1.5, gt=0)  # agranda el video anotado para que el texto se lea
+    gif_inicio_s: float = Field(0.0, ge=0)
+    gif_duracion_s: float = Field(6.0, gt=0)
+    gif_ancho: int = Field(320, ge=64)  # chico a propósito: no deja leer patentes
+    gif_fps: float = Field(8.0, gt=0)
+    gif_colores: int = Field(64, ge=2, le=256)
+
+
 class RutasCfg(_Modelo):
     clips: Path = Path("configs/clips.yaml")
     calibracion: Path = Path("configs/calibracion.yaml")
@@ -110,6 +119,7 @@ class AppConfig(_Modelo):
     color: ColorCfg = ColorCfg()
     conteo: ConteoCfg = ConteoCfg()
     alertas: AlertasCfg = AlertasCfg()
+    render: RenderCfg = RenderCfg()
     rutas: RutasCfg = RutasCfg()
 
 

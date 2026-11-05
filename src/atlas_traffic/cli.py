@@ -38,6 +38,9 @@ def run(
     debug_video: bool = typer.Option(
         False, "--debug-video", help="Escribe debug.mp4 con cajas e IDs para revisar a ojo."
     ),
+    render: bool = typer.Option(
+        False, "--render", help="Escribe anotado.mp4 (presentación) y muestra.gif."
+    ),
     reusar_detecciones: bool = typer.Option(
         False,
         "--reusar-detecciones",
@@ -90,6 +93,9 @@ def run(
             cols = ["ts", "track_id", "aproximacion", "sentido", "clase_detalle", "thumb"]
             typer.echo(res.eventos[cols].round(1).to_string(index=False))
 
+    if render:
+        _render_presentacion(c, cfg, salida)
+
     if debug_video:
         import pandas as pd
 
@@ -107,6 +113,33 @@ def run(
         if estab is not None:
             ruta = video_estabilizado(c.archivo, estab, salida / "estabilizado.mp4")
             typer.echo(f"Video estabilizado -> {ruta}")
+
+
+def _render_presentacion(c, cfg, salida: Path) -> None:
+    import pandas as pd
+
+    from atlas_traffic.config import load_geometria
+    from atlas_traffic.render import gif_desde_video, video_anotado
+
+    if not c.geometria.exists():
+        typer.secho("Sin geometría: no hay video anotado.", fg=typer.colors.YELLOW)
+        return
+
+    def leer(nombre: str):
+        ruta = salida / nombre
+        return pd.read_parquet(ruta) if ruta.exists() else None
+
+    mp4 = video_anotado(
+        c.archivo, leer("detecciones.parquet"), load_geometria(c.geometria),
+        salida / "anotado.mp4", titulo=c.id, estabilizacion=leer("estabilizacion.parquet"),
+        cruces=leer("cruces.parquet"), intervalos=leer("intervalos.parquet"),
+        eventos=leer("eventos.parquet"), escala=cfg.render.escala,
+    )  # fmt: skip
+    typer.echo(f"Video anotado -> {mp4}")
+    r = cfg.render
+    gif = gif_desde_video(mp4, salida / "muestra.gif", r.gif_inicio_s, r.gif_duracion_s,
+                          r.gif_ancho, r.gif_fps, r.gif_colores)  # fmt: skip
+    typer.echo(f"GIF -> {gif} ({gif.stat().st_size / 1e6:.1f} MB)")
 
 
 @app.command()
