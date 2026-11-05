@@ -10,7 +10,7 @@ jobs:
     name: Lint y tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Librerías del sistema para OpenCV
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
@@ -18,10 +18,11 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.11"
+          activate-environment: true  # crea .venv y lo deja activo para los pasos siguientes
 
       # Sin el extra `detect`: los tests usan FakeDetector y no necesitan YOLO ni torch.
       - name: Instalar
-        run: uv pip install --system -e ".[dev,dashboard]"
+        run: uv pip install -e ".[dev,dashboard]"
 
       - name: Lint
         run: ruff check .
@@ -36,7 +37,7 @@ jobs:
     name: Imagen Docker
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Construir imagen
         run: docker build -t atlas-traffic:ci .
       - name: El CLI responde dentro de la imagen
