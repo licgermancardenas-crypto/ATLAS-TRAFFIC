@@ -76,8 +76,8 @@ ENCUADRES = {
 }
 
 # Sentido de circulación legal (alerta de contramano). Av. Córdoba: mano única hacia el
-# fondo (confirmado con las trayectorias). Rodríguez Peña: de derecha a izquierda según lo
-# observado en muestra_3; PENDIENTE de confirmar.
+# fondo (confirmado con las trayectorias). Rodríguez Peña: de derecha a izquierda mirando
+# desde el balcón (observado en muestra_3 y confirmado).
 PERMITIDO = {
     "av_cordoba_frente": "entrante",
     "av_cordoba_fondo": "saliente",

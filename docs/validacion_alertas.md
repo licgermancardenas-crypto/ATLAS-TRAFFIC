@@ -23,8 +23,8 @@ cuando un vehículo cruza en el sentido no permitido y pasa los tres filtros:
 **Sentidos cargados:**
 - **Av. Córdoba:** mano única hacia el fondo. Confirmado por las trayectorias: ningún
   cruce en sentido opuesto en los tres clips.
-- **Rodríguez Peña:** de derecha a izquierda, según lo poco observado en muestra_3.
-  **Pendiente de confirmar.**
+- **Rodríguez Peña:** de derecha a izquierda mirando desde el balcón. Deducido de lo
+  observado en muestra_3 y confirmado por el usuario.
 
 ## Resultado
 
@@ -52,6 +52,5 @@ de rigor.
 
 ## Pendiente
 
-- Confirmar el sentido de Rodríguez Peña.
 - Grabar un evento real de contramano (por ejemplo, una bicicleta o una moto) para
   validar con un caso positivo genuino.

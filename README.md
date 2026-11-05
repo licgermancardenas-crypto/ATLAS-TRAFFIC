@@ -188,9 +188,8 @@ cumplió del todo.
   densidad. Con 5 intervalos, además, los umbrales son poco estables.
 - **Falsos positivos estáticos:** el techo de una parada de colectivos se detecta como
   vehículo y puede sumar uno a la densidad.
-- **Datos provisorios:**
-  - Fecha y hora de los clips estimadas, hasta tener las reales.
-  - Sentido de Rodríguez Peña deducido de pocas observaciones, pendiente de confirmar.
+- **Datos provisorios:** la fecha y la hora de los clips son estimadas, hasta tener las
+  reales.
 
 ## Privacidad y alcance
 
