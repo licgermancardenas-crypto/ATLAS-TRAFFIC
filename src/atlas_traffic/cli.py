@@ -66,15 +66,17 @@ def run(
     if debug_video:
         import pandas as pd
 
+        from atlas_traffic.config import load_geometria
         from atlas_traffic.render import video_debug, video_estabilizado
 
         det = pd.read_parquet(salida / "detecciones.parquet")
-        typer.echo(f"Video de debug -> {video_debug(c.archivo, det, salida / 'debug.mp4')}")
-        estab = salida / "estabilizacion.parquet"
-        if estab.exists():
-            ruta = video_estabilizado(
-                c.archivo, pd.read_parquet(estab), salida / "estabilizado.mp4"
-            )
+        ruta_estab = salida / "estabilizacion.parquet"
+        estab = pd.read_parquet(ruta_estab) if ruta_estab.exists() else None
+        geo = load_geometria(c.geometria) if c.geometria.exists() else None
+        ruta = video_debug(c.archivo, det, salida / "debug.mp4", geo, estab)
+        typer.echo(f"Video de debug -> {ruta}")
+        if estab is not None:
+            ruta = video_estabilizado(c.archivo, estab, salida / "estabilizado.mp4")
             typer.echo(f"Video estabilizado -> {ruta}")
 
 
@@ -89,10 +91,50 @@ def batch(config: Path = ConfigOpt) -> None:
 def geometry(
     clip: str = typer.Option(..., "--clip", help="id del clip cuyo encuadre se marca."),
     config: Path = ConfigOpt,
+    ver: bool = typer.Option(
+        False,
+        "--ver",
+        help="No editar: dibujar la geometría guardada sobre el frame de referencia.",
+    ),
 ) -> None:
-    """Abre un frame del clip para marcar ROI y líneas de conteo con el mouse."""
-    load_app_config(config)
-    _pendiente("Fase 1b")
+    """Abre el frame de referencia del clip para marcar ROI y líneas de conteo con el mouse.
+
+    La geometría se guarda en el archivo que indica `geometria` en clips.yaml y se
+    comparte entre los clips filmados con el mismo encuadre.
+    """
+    import cv2
+
+    from atlas_traffic.clips import get_clip, load_clips
+    from atlas_traffic.config import load_geometria
+    from atlas_traffic.geometry import EditorGeometria, editar_interactivo
+    from atlas_traffic.pipeline import leer_frame
+    from atlas_traffic.render import dibujar_geometria
+
+    cfg = load_app_config(config)
+    c = get_clip(load_clips(cfg.rutas.clips), clip)
+    ref = cfg.estabilizacion.frame_referencia if cfg.estabilizacion.activa else 0
+    frame = leer_frame(c.archivo, ref)
+    alto, ancho = frame.shape[:2]
+
+    if ver:
+        geo = load_geometria(c.geometria)
+        if tuple(geo.resolucion) != (ancho, alto):
+            typer.secho(f"Ojo: la geometría es {geo.resolucion} y el video {ancho}x{alto}.",
+                        fg=typer.colors.YELLOW)  # fmt: skip
+        salida = cfg.rutas.outputs / "runs" / c.id / "geometria.png"
+        salida.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(salida), dibujar_geometria(frame, geo.roi, geo.lineas))
+        typer.echo(f"{len(geo.lineas)} líneas, ROI de {len(geo.roi)} vértices -> {salida}")
+        return
+
+    if c.geometria.exists():
+        editor = EditorGeometria.desde_geometria(load_geometria(c.geometria))
+        typer.echo(f"Editando {c.geometria} existente (r = empezar de cero).")
+    else:
+        editor = EditorGeometria(encuadre=c.geometria.stem, resolucion=(ancho, alto))
+    typer.echo(f"Frame de referencia: {ref} de {c.archivo} ({ancho}x{alto}).")
+    if not editar_interactivo(frame, editor, c.geometria):
+        typer.echo("Salida sin guardar.")
 
 
 @app.command()

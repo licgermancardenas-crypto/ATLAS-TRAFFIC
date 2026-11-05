@@ -30,7 +30,6 @@ def test_subcomandos_validan_config_y_salen_ok(monkeypatch):
     runner = CliRunner()
     for args in (
         ["batch"],
-        ["geometry", "--clip", "x"],
         ["calibrate"],
         ["dashboard"],
     ):
@@ -43,8 +42,9 @@ def test_config_inexistente_falla(tmp_path):
     assert res.exit_code != 0
 
 
-def test_run_con_clip_inexistente_falla(monkeypatch):
+def test_run_y_geometry_con_clip_inexistente_fallan(monkeypatch):
     monkeypatch.chdir(RAIZ)
-    res = CliRunner().invoke(app, ["run", "--clip", "no-existe"])
-    assert res.exit_code != 0
-    assert "no está en clips.yaml" in str(res.exception)
+    for comando in ("run", "geometry"):
+        res = CliRunner().invoke(app, [comando, "--clip", "no-existe"])
+        assert res.exit_code != 0
+        assert "no está en clips.yaml" in str(res.exception)
