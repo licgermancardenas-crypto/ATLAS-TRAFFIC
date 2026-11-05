@@ -12,8 +12,17 @@ deteccion:
 video:
   paso_frames: 2             # 1 de cada 2 frames: 60 fps -> 30 fps efectivos
 
+estabilizacion:             # compensa movimiento de cámara (ver stabilize.py)
+  activa: true               # con cámara fija la H es ~identidad: no hace daño
+  frame_referencia: 0        # la geometría del encuadre se marca sobre este frame
+  max_puntos: 1500           # puntos ORB por frame (3000 = el doble de lento, ~3 px más preciso)
+  min_inliers: 40
+  umbral_ransac_px: 3.0
+  ventana_suavizado: 9       # promedia la H en ~0.3 s: quita el temblor de la estimación
+
 metricas:
   intervalo_s: 30            # ventana de agregación de intervalos.parquet
+  ventana_velocidad_s: 0.33  # velocidad = desplazamiento en ventanas de este largo
 
 color:
   max_frames: 10             # frames muestreados por track

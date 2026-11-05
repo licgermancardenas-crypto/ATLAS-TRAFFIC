@@ -66,10 +66,16 @@ def run(
     if debug_video:
         import pandas as pd
 
-        from atlas_traffic.render import video_debug
+        from atlas_traffic.render import video_debug, video_estabilizado
 
         det = pd.read_parquet(salida / "detecciones.parquet")
         typer.echo(f"Video de debug -> {video_debug(c.archivo, det, salida / 'debug.mp4')}")
+        estab = salida / "estabilizacion.parquet"
+        if estab.exists():
+            ruta = video_estabilizado(
+                c.archivo, pd.read_parquet(estab), salida / "estabilizado.mp4"
+            )
+            typer.echo(f"Video estabilizado -> {ruta}")
 
 
 @app.command()

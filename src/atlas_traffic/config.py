@@ -54,8 +54,20 @@ class VideoCfg(_Modelo):
     paso_frames: int = Field(2, ge=1)  # procesar 1 de cada N frames (60 fps -> 2 da 30 fps)
 
 
+class EstabilizacionCfg(_Modelo):
+    """Compensación de movimiento de cámara (ver stabilize.py)."""
+
+    activa: bool = True  # con cámara fija la H estimada es ~identidad: no hace daño
+    frame_referencia: int = Field(0, ge=0)  # la geometría del encuadre se marca sobre este
+    max_puntos: int = Field(1500, ge=100)
+    min_inliers: int = Field(40, ge=8)
+    umbral_ransac_px: float = Field(3.0, gt=0)
+    ventana_suavizado: int = Field(9, ge=1)  # frames procesados; 1 = sin suavizar
+
+
 class MetricasCfg(_Modelo):
     intervalo_s: int = Field(30, gt=0)
+    ventana_velocidad_s: float = Field(0.33, gt=0)  # ventana para medir desplazamiento
 
 
 class ColorCfg(_Modelo):
@@ -79,6 +91,7 @@ class RutasCfg(_Modelo):
 class AppConfig(_Modelo):
     deteccion: DeteccionCfg = DeteccionCfg()
     video: VideoCfg = VideoCfg()
+    estabilizacion: EstabilizacionCfg = EstabilizacionCfg()
     metricas: MetricasCfg = MetricasCfg()
     color: ColorCfg = ColorCfg()
     alertas: AlertasCfg = AlertasCfg()

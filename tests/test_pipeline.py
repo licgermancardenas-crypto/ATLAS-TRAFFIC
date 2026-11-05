@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from atlas_traffic.config import AppConfig, Clip, RutasCfg, VideoCfg
+from atlas_traffic.config import AppConfig, Clip, EstabilizacionCfg, RutasCfg, VideoCfg
 from atlas_traffic.detect import Deteccion, FakeDetector
 from atlas_traffic.pipeline import correr_clip, detectar_video, tracks_desde_detecciones
 
@@ -38,27 +38,27 @@ def _guion():
 
 
 def test_detectar_video_registra_frames_ts_y_descarta_sin_id(video):
-    d = detectar_video(video, FakeDetector(_guion()))
+    d = detectar_video(video, FakeDetector(_guion())).detecciones
     assert d["track_id"].notna().all()
     assert len(d) == 10 + 3
     assert d.loc[d.frame == 5, "ts"].iat[0] == pytest.approx(0.5)
 
 
 def test_paso_frames_mantiene_indice_real(video):
-    d = detectar_video(video, FakeDetector(_guion()), paso_frames=2)
+    d = detectar_video(video, FakeDetector(_guion()), paso_frames=2).detecciones
     # el detector ve 5 frames (0,2,4,6,8) y consume las 5 primeras entradas del guion
     assert sorted(d.loc[d.track_id == 1, "frame"]) == [0, 2, 4, 6, 8]
 
 
 def test_max_segundos(video):
-    d = detectar_video(video, FakeDetector(_guion()), max_segundos=0.5)
+    d = detectar_video(video, FakeDetector(_guion()), max_segundos=0.5).detecciones
     assert d["frame"].max() == 4
 
 
 def test_tracks_un_registro_por_objeto_con_velocidad(video):
-    t = tracks_desde_detecciones(detectar_video(video, FakeDetector(_guion()))).set_index(
-        "track_id"
-    )
+    t = tracks_desde_detecciones(
+        detectar_video(video, FakeDetector(_guion())).detecciones
+    ).set_index("track_id")
     assert list(t.index) == [1, 2]
     assert t.loc[1, "clase"] == "vehiculo" and t.loc[2, "clase_detalle"] == "person"
     assert (t.loc[1, "frame_inicio"], t.loc[1, "frame_fin"]) == (0, 9)
@@ -81,7 +81,27 @@ def test_correr_clip_escribe_parquets(video, tmp_path):
     clip = Clip(id="c", archivo=video, fecha="2026-11-04", hora_inicio="12:00",
                 dia_semana="miercoles", tipo_dia="habil", clima="x",
                 geometria=Path("g.yaml"))  # fmt: skip
-    cfg = AppConfig(rutas=RutasCfg(outputs=tmp_path / "out"), video=VideoCfg(paso_frames=1))
+    cfg = AppConfig(
+        rutas=RutasCfg(outputs=tmp_path / "out"),
+        video=VideoCfg(paso_frames=1),
+        estabilizacion=EstabilizacionCfg(activa=False),  # video negro: sin textura
+    )
     salida = correr_clip(clip, cfg, FakeDetector(_guion()))
     assert len(pd.read_parquet(salida / "detecciones.parquet")) == 13
     assert len(pd.read_parquet(salida / "tracks.parquet")) == 2
+    assert not (salida / "estabilizacion.parquet").exists()
+
+
+def test_velocidad_ventana_uniforme_ruidosa_y_corta():
+    from atlas_traffic.pipeline import velocidad_ventana
+
+    f = np.arange(0, 100, 2)
+    uniforme = np.column_stack([1.5 * f, np.zeros_like(f)]).astype(float)
+    assert velocidad_ventana(f, uniforme, 20) == pytest.approx(1.5)
+    # objeto quieto con temblor de 1 px: sumar pasos daría ~1 px/frame; la ventana, mucho menos
+    rng = np.random.default_rng(0)
+    quieto = rng.normal(0, 1.0, (len(f), 2))
+    pasos = np.hypot(*np.diff(quieto, axis=0).T).sum() / (f[-1] - f[0])
+    assert velocidad_ventana(f, quieto, 20) < pasos / 4
+    assert velocidad_ventana(np.array([0, 4]), np.array([[0.0, 0], [8, 0]]), 20) == 2.0
+    assert velocidad_ventana(np.array([3]), np.array([[1.0, 1]]), 20) == 0.0

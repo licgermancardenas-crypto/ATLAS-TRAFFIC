@@ -55,3 +55,33 @@ def video_debug(video: Path, detecciones: pd.DataFrame, salida: Path) -> Path:
         cap.release()
         writer.release()
     return salida
+
+
+def video_estabilizado(video: Path, estabilizacion: pd.DataFrame, salida: Path) -> Path:
+    """Escribe un mp4 con cada frame procesado alineado al frame de referencia.
+
+    Sirve para verificar a ojo la estabilización: los edificios deberían quedar quietos.
+    """
+    cap = cv2.VideoCapture(str(video))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    hs = {
+        int(r.frame): np.array(
+            [getattr(r, f"h{i}{j}") for i in range(3) for j in range(3)]
+        ).reshape(3, 3)
+        for r in estabilizacion.itertuples(index=False)
+    }
+    ultimo = max(hs) if hs else -1
+    writer = cv2.VideoWriter(str(salida), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+    try:
+        H = np.eye(3)
+        for i in range(ultimo + 1):
+            ok, frame = cap.read()
+            if not ok:
+                break
+            H = hs.get(i, H)
+            writer.write(cv2.warpPerspective(frame, H, (w, h)))
+    finally:
+        cap.release()
+        writer.release()
+    return salida
