@@ -134,3 +134,29 @@ def test_dashboard_renderiza(tmp_path, monkeypatch, con_datos):
         assert any(m.value == "4" for m in at.metric)  # vehículos de la consulta sin filtros
     else:
         assert any("batch" in w.value for w in at.warning)
+
+
+def test_dashboard_vista_directa(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "configs").mkdir()
+    (tmp_path / "configs/default.yaml").write_text(
+        yaml.safe_dump({"rutas": {"outputs": "out"}}), encoding="utf-8")  # fmt: skip
+    out = tmp_path / "out"
+    out.mkdir()
+    s = _summary().assign(t_inicio_s=[0, 30, 0], inicio=pd.Timestamp("2026-11-04 08:00"))
+    s.to_parquet(out / "summary.parquet")
+    _cruces().assign(hora=pd.Timestamp("2026-11-04 08:00")).to_parquet(out / "cruces_todos.parquet")
+    at = AppTest.from_file(str(RAIZ / "dashboard/app.py"), default_timeout=60)
+    at.query_params["vista"] = "consulta"
+    at.query_params["color"] = "blanco"
+    at.query_params["movimiento"] = "frente · entrante"
+    at.query_params["desde"] = "2"
+    at.query_params["hasta"] = "30"
+    at.run()
+    assert not at.exception, at.exception
+    assert len(at.tabs) == 0 and at.header[0].value == "Consulta"
+    # la consulta del criterio, armada solo desde la URL: (a,1) y (b,1)
+    assert [m.value for m in at.metric if "filtro" in m.label] == ["2"]

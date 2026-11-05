@@ -118,8 +118,8 @@ def eventos(datos) -> None:
         st.success("No hay eventos de sentido contrario en los clips procesados.")
         return
     c1, c2 = st.columns(2)
-    clips = c1.multiselect("Clip", sorted(e["clip_id"].unique()))
-    aprox = c2.multiselect("Aproximación", sorted(e["aproximacion"].unique()))
+    clips = c1.multiselect("Clip", sorted(e["clip_id"].unique()), placeholder="Todos")
+    aprox = c2.multiselect("Aproximación", sorted(e["aproximacion"].unique()), placeholder="Todas")
     if clips:
         e = e[e["clip_id"].isin(clips)]
     if aprox:
@@ -138,11 +138,33 @@ def eventos(datos) -> None:
         st.divider()
 
 
+def _de_url(clave: str, opciones: list[str]) -> list[str]:
+    """Valores iniciales de un filtro tomados de la URL (?color=blanco&color=rojo).
+
+    Permite compartir una consulta con un link. Valores que no existen se ignoran.
+    """
+    return [v for v in st.query_params.get_all(clave) if v in opciones]
+
+
+def _numero_de_url(clave: str, defecto: float) -> float:
+    try:
+        return float(st.query_params.get(clave, defecto))
+    except ValueError:
+        return defecto
+
+
 def filtros_consulta(datos) -> Filtro:
     c = datos.cruces
     sb = st.sidebar
     sb.header("Consulta")
-    clips = sb.multiselect("Clip", sorted(c["clip_id"].unique()), help="Vacío = todos")
+    sb.caption("Los filtros también se pueden pasar por URL para compartir una consulta: "
+               "`?vista=consulta&color=blanco&desde=10&hasta=30`")  # fmt: skip
+
+    def multi(etiqueta: str, clave: str, opciones: list[str], **kw) -> list[str]:
+        return sb.multiselect(etiqueta, opciones, default=_de_url(clave, opciones),
+                              placeholder="Todos", **kw)  # fmt: skip
+
+    clips = multi("Clip", "clip", sorted(c["clip_id"].unique()))
     fechas = pd.to_datetime(c["fecha"]).dt.date
     rango_fechas = None
     if fechas.nunique() > 1:
@@ -151,14 +173,17 @@ def filtros_consulta(datos) -> Filtro:
             rango_fechas = None
     t_max = float(c["ts_cruce"].max()) if not c.empty else 60.0
     tope = float(max(1, round(t_max + 1)))  # float: el slider no acepta tipos mezclados
-    segundos = sb.slider("Ventana dentro del video (s)", 0.0, tope, (0.0, tope), step=1.0)
-    clases = sb.multiselect("Tipo de vehículo", sorted(c["clase_detalle"].dropna().unique()))
-    colores = sb.multiselect("Color", sorted(c["color"].dropna().unique()))
-    movimientos = sb.multiselect(
-        "Movimiento", movimientos_disponibles(c),
+    desde = min(max(0.0, _numero_de_url("desde", 0.0)), tope)
+    hasta = min(max(desde, _numero_de_url("hasta", tope)), tope)
+    segundos = sb.slider("Ventana dentro del video (s)", 0.0, tope, (desde, hasta), step=1.0)
+    clases = multi("Tipo de vehículo", "tipo", sorted(c["clase_detalle"].dropna().unique()))
+    colores = multi("Color", "color", sorted(c["color"].dropna().unique()))
+    movimientos = multi(
+        "Movimiento", "movimiento", movimientos_disponibles(c),
         help="Aproximación y sentido del cruce. Ej.: av_cordoba_frente · entrante",
     )  # fmt: skip
-    conf = sb.slider("Confianza mínima de color", 0.0, 1.0, 0.0, 0.05)
+    conf = sb.slider("Confianza mínima de color", 0.0, 1.0,
+                     min(1.0, max(0.0, _numero_de_url("confianza", 0.0))), 0.05)  # fmt: skip
     return Filtro(clips=clips, fechas=rango_fechas, segundos=segundos, clases=clases,
                   colores=colores, movimientos=[parsear_movimiento(m) for m in movimientos],
                   confianza_color_min=conf)  # fmt: skip
@@ -206,13 +231,22 @@ def main() -> None:
     st.caption("Av. Córdoba y Rodríguez Peña, CABA — conteo por aproximación, congestión "
                "por densidad + velocidad, consulta por vehículo.")  # fmt: skip
     filtro = filtros_consulta(datos)
-    a, b, c = st.tabs(["Panorama", "Eventos", "Consulta"])
-    with a:
-        panorama(datos)
-    with b:
-        eventos(datos)
-    with c:
-        consulta(datos, filtro)
+    vistas = {
+        "panorama": ("Panorama", lambda: panorama(datos)),
+        "eventos": ("Eventos", lambda: eventos(datos)),
+        "consulta": ("Consulta", lambda: consulta(datos, filtro)),
+    }
+    # ?vista=consulta abre directamente una vista (link para compartir o capturar)
+    directa = st.query_params.get("vista")
+    if directa in vistas:
+        titulo, dibujar = vistas[directa]
+        st.header(titulo)
+        dibujar()
+        return
+    for pestana, (_, dibujar) in zip(st.tabs([t for t, _ in vistas.values()]), vistas.values(),
+                                     strict=True):  # fmt: skip
+        with pestana:
+            dibujar()
 
 
 main()

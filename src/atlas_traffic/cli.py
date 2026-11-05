@@ -316,9 +316,14 @@ def dashboard(
     import sys
 
     cfg = load_app_config(config)
-    app_py = Path(__file__).resolve().parents[2] / "dashboard" / "app.py"
-    if not app_py.exists():
-        raise typer.BadParameter(f"no se encontró el dashboard en {app_py}")
+    # en la carpeta de trabajo (Docker, repo) o junto al código (instalación editable)
+    candidatos = [
+        Path("dashboard/app.py"),
+        Path(__file__).resolve().parents[2] / "dashboard/app.py",
+    ]
+    app_py = next((c for c in candidatos if c.exists()), None)
+    if app_py is None:
+        raise typer.BadParameter(f"no se encontró el dashboard en {candidatos}")
     if not (cfg.rutas.outputs / "summary.parquet").exists():
         typer.secho("Ojo: no hay outputs/summary.parquet. Corré `atlas-traffic batch` primero.",
                     fg=typer.colors.YELLOW)  # fmt: skip
