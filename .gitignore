@@ -29,3 +29,5 @@ Thumbs.db
 .idea/
 outputs_yolov8n/
 outputs_exp/
+outputs_eval/
+entrenamiento/dataset_esquina/
