@@ -113,12 +113,19 @@ class EditorGeometria:
             raise ValueError("la ROI necesita al menos 3 puntos")
         self.etapa = "lineas"
 
-    def confirmar_linea(self, id_: str, sentido_positivo: str) -> Linea:
+    def confirmar_linea(
+        self, id_: str, sentido_positivo: str, sentido_permitido: str = "ambos"
+    ) -> Linea:
         if not self.linea_lista:
             raise ValueError("marcá los dos extremos de la línea antes de confirmarla")
         if any(linea.id == id_ for linea in self.lineas):
             raise ValueError(f"ya existe una línea con id {id_!r}")
-        linea = Linea(id=id_, puntos=tuple(self.pendiente), sentido_positivo=sentido_positivo)
+        linea = Linea(
+            id=id_,
+            puntos=tuple(self.pendiente),
+            sentido_positivo=sentido_positivo,
+            sentido_permitido=sentido_permitido,
+        )
         self.lineas.append(linea)
         self.pendiente = []
         return linea
@@ -245,9 +252,17 @@ def _pedir_datos_linea(editor: EditorGeometria) -> None:
         if sentido is None:
             print("  respondé e o s")
             continue
+        resp = input("  sentido de circulación permitido: [e]ntrante, [s]aliente o "
+                     "[a]mbos (Enter = ambos)? ").strip()  # fmt: skip
+        permitido = {"e": "entrante", "s": "saliente", "a": "ambos", "": "ambos"}.get(
+            resp[:1].lower()
+        )
+        if permitido is None:
+            print("  respondé e, s o a")
+            continue
         try:
-            editor.confirmar_linea(id_, sentido)
-            print(f"  OK: {id_} ({sentido})")
+            editor.confirmar_linea(id_, sentido, permitido)
+            print(f"  OK: {id_} (positivo = {sentido}, permitido = {permitido})")
             return
         except ValueError as e:
             print(f"  {e}")

@@ -19,18 +19,22 @@ lineas:
   - [255, 612]
   - [464, 555]
   sentido_positivo: saliente
+  sentido_permitido: entrante
 - id: av_cordoba_fondo
   puntos:
   - [115, 395]
   - [290, 382]
   sentido_positivo: entrante
+  sentido_permitido: saliente
 - id: rodriguez_pena_der
   puntos:
   - [430, 412]
   - [430, 492]
   sentido_positivo: entrante
+  sentido_permitido: entrante
 - id: rodriguez_pena_izq
   puntos:
   - [80, 440]
   - [80, 532]
   sentido_positivo: saliente
+  sentido_permitido: saliente

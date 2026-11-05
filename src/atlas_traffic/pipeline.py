@@ -23,11 +23,13 @@ import cv2
 import numpy as np
 import pandas as pd
 
+from atlas_traffic.alerts import detectar_sentido_contrario, guardar_evidencia
 from atlas_traffic.attributes import extraer_atributos
 from atlas_traffic.config import AppConfig, Clip, EstabilizacionCfg, load_geometria
 from atlas_traffic.counting import anotar_tracks, contar, resumen_conteo
 from atlas_traffic.detect import Detector
 from atlas_traffic.metrics import calcular_intervalos
+from atlas_traffic.render import homografias_por_frame
 from atlas_traffic.stabilize import (
     Estabilizador,
     mascara_sin_cajas,
@@ -264,6 +266,7 @@ class ResultadoAnalisis:
     salida: Path
     conteo: pd.DataFrame | None  # aproximación x sentido x clase; None si no hay geometría
     intervalos: pd.DataFrame | None = None  # una fila por ventana; None si no hay geometría
+    eventos: pd.DataFrame | None = None  # alertas de sentido contrario; None sin geometría
 
 
 def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
@@ -280,7 +283,7 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
     meta = leer_corrida(salida, clip, cfg, det)
     ventana = max(1, round(cfg.metricas.ventana_velocidad_s * meta["fps"]))
     tracks = tracks_desde_detecciones(det, ventana)
-    conteo = intervalos = None
+    conteo = intervalos = eventos = None
     if clip.geometria.exists():
         geo = load_geometria(clip.geometria)
         cruces = contar(det, geo, cfg.conteo.margen_px)
@@ -297,11 +300,16 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
             ventana_frames=ventana,
         )  # fmt: skip
         intervalos.to_parquet(salida / "intervalos.parquet", index=False)
+        eventos = detectar_sentido_contrario(det, geo, cfg.alertas, clip.id, cfg.conteo.margen_px)
+        ruta_estab = salida / "estabilizacion.parquet"
+        hs = homografias_por_frame(pd.read_parquet(ruta_estab)) if ruta_estab.exists() else None
+        eventos = guardar_evidencia(clip.archivo, eventos, det, geo, salida / "eventos", hs)
+        eventos.to_parquet(salida / "eventos.parquet", index=False)
     else:
-        for viejo in ("cruces.parquet", "conteo.csv", "intervalos.parquet"):
+        for viejo in ("cruces.parquet", "conteo.csv", "intervalos.parquet", "eventos.parquet"):
             (salida / viejo).unlink(missing_ok=True)
     atributos = extraer_atributos(clip.archivo, det, cfg.color, salida / "thumbs")
     tracks = tracks.drop(columns=["color", "color_confianza", "thumb"], errors="ignore")
     tracks = tracks.merge(atributos, on="track_id", how="left")
     tracks.to_parquet(salida / "tracks.parquet", index=False)
-    return ResultadoAnalisis(salida, conteo, intervalos)
+    return ResultadoAnalisis(salida, conteo, intervalos, eventos)

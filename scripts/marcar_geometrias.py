@@ -75,12 +75,23 @@ ENCUADRES = {
     ),
 }
 
+# Sentido de circulación legal (alerta de contramano). Av. Córdoba: mano única hacia el
+# fondo (confirmado con las trayectorias). Rodríguez Peña: de derecha a izquierda según lo
+# observado en muestra_3; PENDIENTE de confirmar.
+PERMITIDO = {
+    "av_cordoba_frente": "entrante",
+    "av_cordoba_fondo": "saliente",
+    "rodriguez_pena_der": "entrante",
+    "rodriguez_pena_izq": "saliente",
+}
+
 for encuadre, spec in ENCUADRES.items():
     lineas = []
     for id_, puntos in spec["lineas"].items():
         provisoria = Linea(id=id_, puntos=puntos, sentido_positivo="entrante")
         sentido = "entrante" if lado(provisoria, spec["centro"]) > 0 else "saliente"
-        lineas.append(Linea(id=id_, puntos=puntos, sentido_positivo=sentido))
+        lineas.append(Linea(id=id_, puntos=puntos, sentido_positivo=sentido,
+                            sentido_permitido=PERMITIDO.get(id_, "ambos")))  # fmt: skip
     geo = Geometria(encuadre=encuadre, resolucion=(464, 832), roi=spec["roi"], lineas=lineas)
     guardar_geometria(geo, RAIZ / "configs" / "geometria" / f"{encuadre}.yaml")
     print(encuadre, [(ln.id, ln.sentido_positivo) for ln in lineas])

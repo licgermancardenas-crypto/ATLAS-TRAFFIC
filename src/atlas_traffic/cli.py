@@ -84,6 +84,11 @@ def run(
                 "velocidad_media_px"]  # fmt: skip
         typer.echo(f"\nIntervalos de {cfg.metricas.intervalo_s} s:")
         typer.echo(res.intervalos[cols].round(2).to_string(index=False))
+    if res.eventos is not None:
+        typer.echo(f"\nEventos de sentido contrario: {len(res.eventos)}")
+        if not res.eventos.empty:
+            cols = ["ts", "track_id", "aproximacion", "sentido", "clase_detalle", "thumb"]
+            typer.echo(res.eventos[cols].round(1).to_string(index=False))
 
     if debug_video:
         import pandas as pd

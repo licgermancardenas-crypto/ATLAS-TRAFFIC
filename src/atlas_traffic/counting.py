@@ -40,6 +40,13 @@ def _segmentos_se_cortan(p0, p1, a, b, tol: float = 1e-9) -> bool:
     return (d1 * d2 <= tol) and (d3 * d4 <= tol)
 
 
+def distancia_a_linea(linea: Linea, xy: np.ndarray) -> np.ndarray:
+    """Distancia con signo (px) de cada punto a la recta de la línea (signo = lado)."""
+    a = np.asarray(linea.puntos[0], dtype=np.float64)
+    b = np.asarray(linea.puntos[1], dtype=np.float64)
+    return lado(linea, xy) / np.hypot(*(b - a))
+
+
 def cruces_de_track(
     frames: np.ndarray, ts: np.ndarray, xy: np.ndarray, linea: Linea, margen_px: float = 4.0
 ) -> list[tuple[int, float, bool]]:
@@ -48,12 +55,19 @@ def cruces_de_track(
     `frames`, `ts` y `xy` (N, 2) ordenados por frame. Devuelve todos los cruces, sin
     aplicar todavía la regla de conteo único.
     """
+    return [c[:3] for c in cruces_con_indices(frames, ts, xy, linea, margen_px)]
+
+
+def cruces_con_indices(
+    frames: np.ndarray, ts: np.ndarray, xy: np.ndarray, linea: Linea, margen_px: float = 4.0
+) -> list[tuple[int, float, bool, int, int]]:
+    """Como cruces_de_track, más (j, i): último punto antes y primer punto después."""
     if len(frames) < 2:
         return []
     a = np.asarray(linea.puntos[0], dtype=np.float64)
     b = np.asarray(linea.puntos[1], dtype=np.float64)
-    dist = lado(linea, xy) / np.hypot(*(b - a))  # distancia con signo, en px
-    cruces: list[tuple[int, float, bool]] = []
+    dist = distancia_a_linea(linea, xy)
+    cruces: list[tuple[int, float, bool, int, int]] = []
     estado, idx_estado = 0, -1  # lado vigente (fuera de la banda muerta) y su último punto
     # Un track que aparece ya dentro de la banda muerta (detectado tarde, justo sobre la
     # línea) toma como lado inicial el de su primer punto: si después sale por el otro
@@ -70,7 +84,7 @@ def cruces_de_track(
                 # instante del cruce: interpolado donde la distancia pasa por cero
                 t = dist[j] / (dist[j] - dist[i])
                 frame = int(round(frames[j] + t * (frames[i] - frames[j])))
-                cruces.append((frame, float(ts[j] + t * (ts[i] - ts[j])), signo > 0))
+                cruces.append((frame, float(ts[j] + t * (ts[i] - ts[j])), signo > 0, j, i))
         estado, idx_estado = signo, i
     return cruces
 

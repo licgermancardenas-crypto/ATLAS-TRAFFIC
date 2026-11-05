@@ -58,6 +58,10 @@ def test_editor_flujo_completo():
     assert geo.encuadre == "enc" and len(geo.roi) == 4
     assert geo.lineas[0].puntos == ((50, 150), (150, 150))
     assert geo.lineas[0].sentido_positivo == "entrante"
+    assert geo.lineas[0].sentido_permitido == "ambos"  # default: no genera alertas
+    ed.clic(50, 200)
+    ed.clic(150, 200)
+    assert ed.confirmar_linea("calle", "saliente", "entrante").sentido_permitido == "entrante"
 
 
 def test_editor_valida():

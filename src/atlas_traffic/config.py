@@ -169,6 +169,9 @@ class Linea(_Modelo):
     id: str = Field(min_length=1)
     puntos: tuple[Punto, Punto]
     sentido_positivo: Sentido  # qué significa cruzar de A hacia B
+    # Sentido de circulación legal en esa aproximación (alerta de contramano, §4d).
+    # "ambos" = calle doble mano o sin dato: no genera alertas.
+    sentido_permitido: Literal["entrante", "saliente", "ambos"] = "ambos"
 
     @model_validator(mode="after")
     def _segmento_no_degenerado(self) -> Linea:
