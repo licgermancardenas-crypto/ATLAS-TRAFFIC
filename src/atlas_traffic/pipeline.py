@@ -33,6 +33,13 @@ from atlas_traffic.config import (
     load_geometria,
 )
 from atlas_traffic.congestion import aplicar
+from atlas_traffic.correction import (
+    calcular_tasas,
+    corregir_conteo,
+    detectar_luz,
+    flujo_entrante,
+    leer_registros,
+)
 from atlas_traffic.counting import anotar_tracks, contar, resumen_conteo
 from atlas_traffic.detect import Detector
 from atlas_traffic.geometry import filtrar_exclusiones
@@ -301,6 +308,13 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
         cruces = contar(det, geo, cfg.conteo.margen_px)
         cruces.to_parquet(salida / "cruces.parquet", index=False)
         conteo = resumen_conteo(cruces, geo)
+        luz = clip.luz or detectar_luz(leer_frame(clip.archivo, 0))
+        tasas = {}
+        if cfg.correccion.activa:
+            tasas = calcular_tasas(
+                leer_registros(cfg.correccion.registros), cfg.correccion.confianza
+            )
+            conteo = conteo.join(corregir_conteo(conteo, tasas, luz).drop(columns="vehiculo"))
         conteo.to_csv(salida / "conteo.csv")
         tracks = anotar_tracks(tracks, cruces)
         intervalos = calcular_intervalos(
@@ -314,6 +328,9 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
         # velocidades instantáneas en la ROI: insumo de la calibración de congestión
         vel = vehiculos_en_roi(det, geo, ventana)[["frame", "track_id", "vel"]]
         vel.dropna().to_parquet(salida / "velocidades_roi.parquet", index=False)
+        bordes = np.append(intervalos["t_inicio_s"].to_numpy(), intervalos["t_fin_s"].iat[-1])
+        entrante = flujo_entrante(cruces, tasas, luz, bordes)
+        intervalos = pd.concat([intervalos, entrante], axis=1).assign(luz=luz)
         if cfg.rutas.calibracion.exists():
             intervalos = aplicar(intervalos, geo.encuadre, load_calibracion(cfg.rutas.calibracion))
         intervalos.to_parquet(salida / "intervalos.parquet", index=False)

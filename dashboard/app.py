@@ -42,7 +42,7 @@ def _config_path() -> Path:
     return args.config
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=30)  # 30 s: los cambios de batch se ven solos
 def _cargar(outputs: str):
     return cargar(Path(outputs))
 
@@ -68,20 +68,43 @@ def panorama(datos) -> None:
 
     st.subheader("Flujo por intervalo")
     nombres = {
-        "flujo_veh_min": "Flujo (veh/min)",
+        "flujo_entrante_corr_min": "Entran al cruce, corregido (veh/min)",
+        "flujo_veh_min": "Atraviesan el cruce, crudo (veh/min)",
         "densidad_media": "Densidad (veh en zona)",
         "velocidad_norm": "Velocidad normalizada",
     }
-    metrica = st.radio("Métrica", list(nombres), horizontal=True, format_func=nombres.get)
+    disponibles = [m for m in nombres if m in s.columns]
+    metrica = st.radio("Métrica", disponibles, horizontal=True, format_func=nombres.get)
+    tooltip = [c for c in ["clip_id", "luz", "inicio", "t_inicio_s", "flujo_entrante_min",
+               "flujo_entrante_corr_min", "flujo_entrante_ic_bajo", "flujo_entrante_ic_alto",
+               "flujo_veh_min", "densidad_media", "velocidad_norm", "congestion"]
+               if c in s.columns]  # fmt: skip
     base = alt.Chart(s).encode(
         x=alt.X("t_inicio_s:Q", title="segundo del clip"),
         y=alt.Y(f"{metrica}:Q", title=None),
         color=alt.Color("clip_id:N", title="clip"),
-        tooltip=["clip_id", "inicio", "t_inicio_s", "flujo_veh_min", "densidad_media",
-                 "velocidad_norm", "congestion"],
-    )  # fmt: skip
-    st.altair_chart(base.mark_line() + base.mark_point(filled=True, size=80),
-                    width="stretch")  # fmt: skip
+        tooltip=tooltip,
+    )
+    capas = base.mark_line() + base.mark_point(filled=True, size=80)
+    if metrica == "flujo_entrante_corr_min":
+        # banda: intervalo de confianza del 95 % de la corrección por tasa de detección
+        banda = (
+            alt.Chart(s)
+            .mark_errorbar(thickness=2, ticks=True)
+            .encode(
+                x="t_inicio_s:Q",
+                y=alt.Y("flujo_entrante_ic_bajo:Q", title=None),
+                y2="flujo_entrante_ic_alto:Q",
+                color="clip_id:N",
+            )
+        )
+        capas = banda + capas
+        st.caption(
+            "Vehículos que entran al cruce, corregidos por la tasa de detección medida en la "
+            "validación (de día la línea del frente detecta ~95 %, de noche ~64 %). Las barras "
+            "son el intervalo de confianza del 95 %: más anchas de noche, donde se pierde más."
+        )
+    st.altair_chart(capas, width="stretch")
 
     izq, der = st.columns(2)
     with izq:
@@ -105,6 +128,16 @@ def panorama(datos) -> None:
                 order=alt.Order("congestion:N"),
                 tooltip=["hora_del_dia", "congestion", "intervalos"],
             ), width="stretch")  # fmt: skip
+
+    if not datos.conteos.empty and "vehiculo_corregido" in datos.conteos:
+        st.subheader("Conteo por aproximación")
+        st.caption("Vehículos que cruzaron cada línea: contados y corregidos por la tasa de "
+                   "detección, con intervalo del 95 %. 'validada' = hay conteos manuales para "
+                   "esa línea y esa luz.")  # fmt: skip
+        k = datos.conteos[datos.conteos["vehiculo"] > 0]
+        cols = ["clip_id", "aproximacion", "sentido", "vehiculo", "vehiculo_corregido",
+                "ic_bajo", "ic_alto", "tasa_deteccion", "validada"]  # fmt: skip
+        st.dataframe(k[cols].round(1), hide_index=True, width="stretch")
 
     st.subheader("Clips")
     tabla = tabla_clips(s).round({"flujo_veh_min": 1, "densidad_media": 1})

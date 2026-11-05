@@ -96,7 +96,10 @@ def _procesar_clip(
         )
     elif detallado:
         typer.echo("\nConteo por aproximación (cruces únicos):")
-        typer.echo(res.conteo.to_string())
+        typer.echo(res.conteo.round(1).to_string())
+        if "vehiculo_corregido" in res.conteo:
+            typer.echo("vehiculo_corregido = conteo / tasa de detección validada; "
+                       "ic_bajo-ic_alto = intervalo de confianza del 95 %.")  # fmt: skip
     if detallado and res.intervalos is not None:
         cols = ["t_inicio_s", "t_fin_s", "flujo_veh_min", "flujo_peat_min", "densidad_media",
                 "velocidad_media_px"]  # fmt: skip

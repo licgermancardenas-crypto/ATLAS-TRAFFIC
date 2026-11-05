@@ -46,6 +46,11 @@ alertas:
   min_desplazamiento_px: 40  # ignora vehículos detenidos con jitter
   frames_limpios: 3          # frames a cada lado de la línea para validar el cruce
 
+correccion:                  # conteos corregidos por tasa de detección (correction.py)
+  activa: true
+  registros: docs/validacion_conteo_registros.csv   # conteos manuales de la validación
+  confianza: 0.95
+
 render:
   escala: 1.5                # el video anotado se agranda para que el texto se lea
   gif_inicio_s: 0            # tramo del GIF de muestra

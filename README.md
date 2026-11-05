@@ -127,6 +127,7 @@ video ─► Detector (protocolo) ─► tracks con ID ─► estabilización (h
 | `attributes.py` | Color por votación y recortes. |
 | `alerts.py` | Regla de sentido contrario. |
 | `congestion.py` | Calibración y matriz de congestión. |
+| `correction.py` | Conteos corregidos por tasa de detección, con intervalo de confianza; detección día / noche. |
 | `aggregate.py` | Consolidación multi-clip. |
 | `consulta.py` | Lógica del dashboard. |
 | `render.py` | Video anotado y GIF. |
@@ -167,6 +168,31 @@ cumplió del todo.
   otra, disjunta.
 - **Quién etiquetó:** los conteos y las etiquetas de referencia los hizo Claude (Claude
   Code) mirando imágenes, no una persona. Conviene repetirlos a mano.
+
+## Números con margen de error
+
+Los conteos automáticos pierden vehículos, sobre todo motos lejanas y autos oscuros de
+noche, pero no inventan: en la validación no hubo ni un cruce falso. Por eso cada conteo
+se corrige con la **tasa de detección** medida contra los conteos manuales
+(`docs/validacion_conteo_registros.csv`), por línea y por luz (día / noche), y se reporta
+con **intervalo de confianza del 95 %** (Wilson).
+
+| Clip | Entran al cruce (contados) | Corregido | Intervalo 95 % |
+|---|---|---|---|
+| muestra_2 (día), 0–30 s | 68 veh/min | 72 | 69–81 |
+| muestra_1 (noche) | 24.5 veh/min | 38 | 29–63 |
+
+- **La métrica principal es el flujo que entra al cruce.** Cada vehículo entra una sola
+  vez, y la entrada de Córdoba es la línea más cercana a la cámara, donde los vehículos se
+  ven grandes.
+- **Cómo leer el margen:** es angosto de día, donde la línea del frente detecta ~95 %, y
+  ancho de noche, donde detecta ~64 % con menos datos de validación.
+- **Qué queda afuera:** las líneas sin validar no se corrigen y quedan marcadas.
+- **El día o la noche** se detecta solo, por el tinte naranja del alumbrado en la calle, o
+  se declara con `luz:` en `clips.yaml`.
+- **Salvedad:** en estos tres clips la corrección es parcialmente circular, porque las
+  tasas se midieron sobre ellos mismos. Está pensada para los clips que se procesen
+  después.
 
 ## Limitaciones
 

@@ -23,6 +23,7 @@ class Datos:
     cruces: pd.DataFrame
     eventos: pd.DataFrame
     outputs: Path
+    conteos: pd.DataFrame = field(default_factory=pd.DataFrame)  # conteo.csv de cada clip
 
     @property
     def vacio(self) -> bool:
@@ -34,7 +35,11 @@ def cargar(outputs: Path) -> Datos:
         ruta = outputs / nombre
         return pd.read_parquet(ruta) if ruta.exists() else pd.DataFrame()
 
+    conteos = []
+    for ruta in sorted((outputs / "runs").glob("*/conteo.csv")):
+        conteos.append(pd.read_csv(ruta).assign(clip_id=ruta.parent.name))
     return Datos(
+        conteos=pd.concat(conteos, ignore_index=True) if conteos else pd.DataFrame(),
         summary=leer("summary.parquet"),
         tracks=leer("tracks_todos.parquet"),
         cruces=leer("cruces_todos.parquet"),

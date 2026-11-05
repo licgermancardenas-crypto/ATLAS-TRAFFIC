@@ -125,7 +125,7 @@ def test_analizar_clip_con_geometria_cuenta(video, tmp_path):
     res = analizar_clip(clip, cfg)
     # A->B hacia abajo: lado positivo = izquierda; ir hacia la derecha es cruce negativo
     assert res.conteo.loc[("l", "saliente"), "vehiculo"] == 1
-    assert res.conteo.to_numpy().sum() == 1
+    assert res.conteo[["vehiculo", "peaton"]].to_numpy().sum() == 1
     tracks = pd.read_parquet(res.salida / "tracks.parquet").set_index("track_id")
     assert bool(tracks.loc[1, "cruzo_linea"]) and not tracks.loc[2, "cruzo_linea"]
     assert (res.salida / "conteo.csv").exists()

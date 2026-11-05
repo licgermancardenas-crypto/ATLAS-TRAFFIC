@@ -100,6 +100,14 @@ class AlertasCfg(_Modelo):
     frames_limpios: int = Field(3, ge=1)
 
 
+class CorreccionCfg(_Modelo):
+    """Corrección de conteos por tasa de detección (ver correction.py)."""
+
+    activa: bool = True
+    registros: Path = Path("docs/validacion_conteo_registros.csv")  # conteos manuales
+    confianza: float = Field(0.95, gt=0, lt=1)
+
+
 class RenderCfg(_Modelo):
     escala: float = Field(1.5, gt=0)  # agranda el video anotado para que el texto se lea
     gif_inicio_s: float = Field(0.0, ge=0)
@@ -123,6 +131,7 @@ class AppConfig(_Modelo):
     color: ColorCfg = ColorCfg()
     conteo: ConteoCfg = ConteoCfg()
     alertas: AlertasCfg = AlertasCfg()
+    correccion: CorreccionCfg = CorreccionCfg()
     render: RenderCfg = RenderCfg()
     rutas: RutasCfg = RutasCfg()
 
@@ -145,6 +154,9 @@ class Clip(_Modelo):
     clima: str
     geometria: Path
     notas: str = ""
+    # día / noche: elige la tasa de detección para corregir conteos. Si se omite, se
+    # detecta por el tinte de la calle (ver correction.detectar_luz).
+    luz: Literal["dia", "noche"] | None = None
 
     @field_validator("dia_semana")
     @classmethod
