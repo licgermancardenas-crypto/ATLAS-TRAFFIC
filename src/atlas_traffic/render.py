@@ -109,6 +109,25 @@ def dibujar_geometria(
     return out
 
 
+def dibujar_contadores(
+    frame: np.ndarray, lineas: Sequence[Linea], conteos: dict[tuple[str, str], int]
+) -> np.ndarray:
+    """Panel arriba a la izquierda: cruces acumulados por línea (entrantes / salientes)."""
+    out = frame.copy()
+    alto_fila = 18
+    ancho = 210
+    capa = out.copy()
+    cv2.rectangle(capa, (4, 4), (4 + ancho, 10 + alto_fila * (len(lineas) + 1)), (0, 0, 0), -1)
+    out = cv2.addWeighted(capa, 0.55, out, 0.45, 0)
+    _texto(out, "linea      entra  sale", (10, 4 + alto_fila), (255, 255, 255), 0.42)
+    for k, linea in enumerate(lineas, start=2):
+        e = conteos.get((linea.id, "entrante"), 0)
+        s = conteos.get((linea.id, "saliente"), 0)
+        _texto(out, f"{linea.id[:10]:<10} {e:>5} {s:>5}", (10, 4 + alto_fila * k),
+               COLOR_LINEA[linea.sentido_positivo], 0.42)  # fmt: skip
+    return out
+
+
 def homografias_por_frame(estabilizacion: pd.DataFrame) -> dict[int, np.ndarray]:
     """frame -> H (frame -> referencia), desde estabilizacion.parquet."""
     H = estabilizacion[COLUMNAS_H].to_numpy().reshape(-1, 3, 3)
@@ -121,14 +140,26 @@ def video_debug(
     salida: Path,
     geometria: Geometria | None = None,
     estabilizacion: pd.DataFrame | None = None,
+    cruces: pd.DataFrame | None = None,
 ) -> Path:
-    """mp4 con cajas e IDs; si hay geometría, ROI y líneas siguiendo a la cámara."""
+    """mp4 con cajas e IDs; si hay geometría, ROI y líneas siguiendo a la cámara.
+
+    Con `cruces`, suma un contador acumulado por línea y sentido: sirve para el chequeo
+    manual de la Fase 2 (pausar el video y comparar con lo que uno ve).
+    """
     cap = cv2.VideoCapture(str(video))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     ultimo = int(detecciones["frame"].max()) if not detecciones.empty else -1
     por_frame = dict(tuple(detecciones.groupby("frame")))
     hs = homografias_por_frame(estabilizacion) if estabilizacion is not None else {}
+    eventos = (
+        list(cruces[["frame", "aproximacion", "sentido"]].itertuples(index=False, name=None))
+        if cruces is not None and not cruces.empty
+        else []
+    )
+    eventos.sort()
+    conteos: dict[tuple[str, str], int] = {}
     writer = cv2.VideoWriter(str(salida), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
     try:
         vigentes = detecciones.iloc[0:0]
@@ -143,7 +174,13 @@ def video_debug(
                 H_inv = np.linalg.inv(hs[i])  # referencia -> este frame
             if geometria is not None:
                 frame = dibujar_geometria(frame, geometria.roi, geometria.lineas, H=H_inv)
-            writer.write(dibujar_cajas(frame, vigentes))
+            frame = dibujar_cajas(frame, vigentes)
+            while eventos and eventos[0][0] <= i:
+                _, linea_id, sentido = eventos.pop(0)
+                conteos[(linea_id, sentido)] = conteos.get((linea_id, sentido), 0) + 1
+            if geometria is not None and cruces is not None:
+                frame = dibujar_contadores(frame, geometria.lineas, conteos)
+            writer.write(frame)
     finally:
         cap.release()
         writer.release()

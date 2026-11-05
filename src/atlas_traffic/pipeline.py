@@ -22,7 +22,8 @@ import cv2
 import numpy as np
 import pandas as pd
 
-from atlas_traffic.config import AppConfig, Clip, EstabilizacionCfg
+from atlas_traffic.config import AppConfig, Clip, EstabilizacionCfg, load_geometria
+from atlas_traffic.counting import anotar_tracks, contar, resumen_conteo
 from atlas_traffic.detect import Detector
 from atlas_traffic.stabilize import (
     Estabilizador,
@@ -224,12 +225,43 @@ def correr_clip(
         clip.archivo, detector, cfg.video.paso_frames, max_segundos, progreso, cfg.estabilizacion
     )
     res.detecciones.to_parquet(salida / "detecciones.parquet", index=False)
-    ventana = max(1, round(cfg.metricas.ventana_velocidad_s * info_video(clip.archivo).fps))
-    tracks = tracks_desde_detecciones(res.detecciones, ventana)
-    tracks.to_parquet(salida / "tracks.parquet", index=False)
     estab_path = salida / "estabilizacion.parquet"
     if not res.estabilizacion.empty:
         res.estabilizacion.to_parquet(estab_path, index=False)
     elif estab_path.exists():
         estab_path.unlink()  # no dejar el diagnóstico de una corrida anterior
     return salida
+
+
+@dataclass(frozen=True)
+class ResultadoAnalisis:
+    salida: Path
+    conteo: pd.DataFrame | None  # aproximación x sentido x clase; None si no hay geometría
+
+
+def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
+    """De detecciones.parquet a tracks.parquet + cruces.parquet + conteo.csv.
+
+    Separado de la detección para poder recontar en segundos (por ejemplo, después de
+    corregir la geometría) sin volver a correr el modelo.
+    """
+    salida = cfg.rutas.outputs / "runs" / clip.id
+    ruta_det = salida / "detecciones.parquet"
+    if not ruta_det.exists():
+        raise FileNotFoundError(f"no hay detecciones para {clip.id}: corré `run` sin reusar")
+    det = pd.read_parquet(ruta_det)
+    ventana = max(1, round(cfg.metricas.ventana_velocidad_s * info_video(clip.archivo).fps))
+    tracks = tracks_desde_detecciones(det, ventana)
+    conteo = None
+    if clip.geometria.exists():
+        geo = load_geometria(clip.geometria)
+        cruces = contar(det, geo, cfg.conteo.margen_px)
+        cruces.to_parquet(salida / "cruces.parquet", index=False)
+        conteo = resumen_conteo(cruces, geo)
+        conteo.to_csv(salida / "conteo.csv")
+        tracks = anotar_tracks(tracks, cruces)
+    else:
+        for viejo in ("cruces.parquet", "conteo.csv"):
+            (salida / viejo).unlink(missing_ok=True)
+    tracks.to_parquet(salida / "tracks.parquet", index=False)
+    return ResultadoAnalisis(salida, conteo)

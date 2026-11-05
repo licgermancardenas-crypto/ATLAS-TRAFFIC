@@ -173,6 +173,23 @@ def editar_interactivo(
 
     cv2.setMouseCallback(ventana, on_mouse)
     print("\n".join(AYUDA))
+    guardado = False
+    ultimo_guardado: Geometria | None = None
+
+    def autoguardar() -> None:
+        # Guarda cada vez que la geometría es válida y cambió: el foco del teclado suele
+        # quedar en la terminal después de nombrar una línea, y una "s" tecleada ahí no
+        # llega a la ventana. Así cerrar la ventana nunca pierde trabajo.
+        nonlocal guardado, ultimo_guardado
+        try:
+            geo = editor.geometria()
+        except ValueError:
+            return
+        if geo != ultimo_guardado:
+            guardar_geometria(geo, ruta)
+            ultimo_guardado, guardado = geo, True
+            print(f"  (guardado automático en {ruta})")
+
     try:
         while True:
             vista = dibujar_geometria(
@@ -187,6 +204,8 @@ def editar_interactivo(
             tecla = cv2.waitKey(30) & 0xFF
             if editor.linea_lista:
                 _pedir_datos_linea(editor)
+                autoguardar()
+                print("  Volvé a hacer clic en la ventana para seguir marcando.")
             elif tecla in (13, 10):
                 try:
                     editor.cerrar_roi()
@@ -195,19 +214,21 @@ def editar_interactivo(
                     print(e)
             elif tecla == ord("z"):
                 editor.deshacer()
+                autoguardar()
             elif tecla == ord("r"):
                 editor.reiniciar()
             elif tecla == ord("s"):
                 try:
-                    guardar_geometria(editor.geometria(), ruta)
-                    print(f"Guardado: {ruta}")
+                    editor.geometria()
+                    autoguardar()
+                    print(f"Guardado: {ruta} ({len(editor.lineas)} líneas)")
                     return True
                 except ValueError as e:
                     print(f"No se puede guardar todavía: {e}")
             elif tecla in (ord("q"), 27):
-                return False
+                return guardado
             if cv2.getWindowProperty(ventana, cv2.WND_PROP_VISIBLE) < 1:
-                return False
+                return guardado
     finally:
         cv2.destroyWindow(ventana)
 

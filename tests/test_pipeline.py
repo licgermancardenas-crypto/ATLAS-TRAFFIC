@@ -9,7 +9,12 @@ import pytest
 
 from atlas_traffic.config import AppConfig, Clip, EstabilizacionCfg, RutasCfg, VideoCfg
 from atlas_traffic.detect import Deteccion, FakeDetector
-from atlas_traffic.pipeline import correr_clip, detectar_video, tracks_desde_detecciones
+from atlas_traffic.pipeline import (
+    analizar_clip,
+    correr_clip,
+    detectar_video,
+    tracks_desde_detecciones,
+)
 
 
 @pytest.fixture
@@ -77,10 +82,14 @@ def test_tracks_vacio():
     assert tracks_desde_detecciones(pd.DataFrame()).empty
 
 
-def test_correr_clip_escribe_parquets(video, tmp_path):
-    clip = Clip(id="c", archivo=video, fecha="2026-11-04", hora_inicio="12:00",
+def _clip(video, geometria):
+    return Clip(id="c", archivo=video, fecha="2026-11-04", hora_inicio="12:00",
                 dia_semana="miercoles", tipo_dia="habil", clima="x",
-                geometria=Path("g.yaml"))  # fmt: skip
+                geometria=geometria)  # fmt: skip
+
+
+def test_correr_clip_escribe_parquets(video, tmp_path):
+    clip = _clip(video, tmp_path / "no_existe.yaml")
     cfg = AppConfig(
         rutas=RutasCfg(outputs=tmp_path / "out"),
         video=VideoCfg(paso_frames=1),
@@ -88,8 +97,40 @@ def test_correr_clip_escribe_parquets(video, tmp_path):
     )
     salida = correr_clip(clip, cfg, FakeDetector(_guion()))
     assert len(pd.read_parquet(salida / "detecciones.parquet")) == 13
-    assert len(pd.read_parquet(salida / "tracks.parquet")) == 2
     assert not (salida / "estabilizacion.parquet").exists()
+    res = analizar_clip(clip, cfg)  # sin geometría: tracks sí, conteo no
+    assert res.conteo is None
+    assert len(pd.read_parquet(salida / "tracks.parquet")) == 2
+    assert not (salida / "cruces.parquet").exists()
+
+
+def test_analizar_clip_con_geometria_cuenta(video, tmp_path):
+    from atlas_traffic.config import Geometria, Linea
+    from atlas_traffic.geometry import guardar_geometria
+
+    # el track 1 avanza en x de 5 a 23 (centroide); línea vertical en x=12
+    linea = Linea(id="l", puntos=((12, 0), (12, 40)), sentido_positivo="entrante")
+    roi = [(0, 0), (64, 0), (64, 48), (0, 48)]
+    geo = Geometria(encuadre="g", resolucion=(64, 48), roi=roi, lineas=[linea])
+    ruta_geo = tmp_path / "g.yaml"
+    guardar_geometria(geo, ruta_geo)
+    clip = _clip(video, ruta_geo)
+    cfg = AppConfig(rutas=RutasCfg(outputs=tmp_path / "out"), video=VideoCfg(paso_frames=1),
+                    estabilizacion=EstabilizacionCfg(activa=False))  # fmt: skip
+    correr_clip(clip, cfg, FakeDetector(_guion()))
+    res = analizar_clip(clip, cfg)
+    # A->B hacia abajo: lado positivo = izquierda; ir hacia la derecha es cruce negativo
+    assert res.conteo.loc[("l", "saliente"), "vehiculo"] == 1
+    assert res.conteo.to_numpy().sum() == 1
+    tracks = pd.read_parquet(res.salida / "tracks.parquet").set_index("track_id")
+    assert bool(tracks.loc[1, "cruzo_linea"]) and not tracks.loc[2, "cruzo_linea"]
+    assert (res.salida / "conteo.csv").exists()
+
+
+def test_analizar_sin_detecciones_falla(video, tmp_path):
+    cfg = AppConfig(rutas=RutasCfg(outputs=tmp_path / "out"))
+    with pytest.raises(FileNotFoundError, match="no hay detecciones"):
+        analizar_clip(_clip(video, tmp_path / "g.yaml"), cfg)
 
 
 def test_velocidad_ventana_uniforme_ruidosa_y_corta():

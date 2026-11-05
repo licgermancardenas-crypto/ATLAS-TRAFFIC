@@ -76,6 +76,11 @@ class ColorCfg(_Modelo):
     confianza_min: float = Field(0.5, ge=0.0, le=1.0)
 
 
+class ConteoCfg(_Modelo):
+    # banda muerta alrededor de cada línea: dentro de ±margen el lado no cambia
+    margen_px: float = Field(4.0, ge=0.0)
+
+
 class AlertasCfg(_Modelo):
     min_frames_historia: int = Field(15, ge=1)
     min_desplazamiento_px: float = Field(40.0, ge=0.0)
@@ -94,6 +99,7 @@ class AppConfig(_Modelo):
     estabilizacion: EstabilizacionCfg = EstabilizacionCfg()
     metricas: MetricasCfg = MetricasCfg()
     color: ColorCfg = ColorCfg()
+    conteo: ConteoCfg = ConteoCfg()
     alertas: AlertasCfg = AlertasCfg()
     rutas: RutasCfg = RutasCfg()
 

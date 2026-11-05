@@ -24,6 +24,9 @@ metricas:
   intervalo_s: 30            # ventana de agregación de intervalos.parquet
   ventana_velocidad_s: 0.33  # velocidad = desplazamiento en ventanas de este largo
 
+conteo:
+  margen_px: 4               # banda muerta: un auto quieto sobre la línea no cuenta cruces
+
 color:
   max_frames: 10             # frames muestreados por track
   solape_max: 0.4            # descarta frames con solape de cajas mayor a esto

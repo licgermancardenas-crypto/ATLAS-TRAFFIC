@@ -38,30 +38,47 @@ def run(
     debug_video: bool = typer.Option(
         False, "--debug-video", help="Escribe debug.mp4 con cajas e IDs para revisar a ojo."
     ),
+    reusar_detecciones: bool = typer.Option(
+        False,
+        "--reusar-detecciones",
+        help="No correr el modelo: recontar sobre las detecciones de la corrida anterior.",
+    ),
 ) -> None:
     """Procesa un clip: detección, tracking, conteo, métricas y eventos."""
     import time
 
     from atlas_traffic.clips import get_clip, load_clips
     from atlas_traffic.detect import crear_detector
-    from atlas_traffic.pipeline import correr_clip
+    from atlas_traffic.pipeline import analizar_clip, correr_clip
 
     cfg = load_app_config(config)
     cambios = {k: v for k, v in {"modelo": modelo, "imgsz": imgsz}.items() if v is not None}
     if cambios:
         cfg = cfg.model_copy(update={"deteccion": cfg.deteccion.model_copy(update=cambios)})
     c = get_clip(load_clips(cfg.rutas.clips), clip)
-    detector = crear_detector(cfg.deteccion.detector, **cfg.deteccion.kwargs_motor())
 
     t0 = time.perf_counter()
-    with typer.progressbar(length=1, label=f"Procesando {c.id}") as barra:
+    if not reusar_detecciones:
+        detector = crear_detector(cfg.deteccion.detector, **cfg.deteccion.kwargs_motor())
+        with typer.progressbar(length=1, label=f"Procesando {c.id}") as barra:
 
-        def progreso(i: int, total: int) -> None:
-            barra.length = total
-            barra.update(i - barra.pos)
+            def progreso(i: int, total: int) -> None:
+                barra.length = total
+                barra.update(i - barra.pos)
 
-        salida = correr_clip(c, cfg, detector, max_segundos, progreso)
+            correr_clip(c, cfg, detector, max_segundos, progreso)
+    res = analizar_clip(c, cfg)
+    salida = res.salida
     typer.echo(f"Listo en {time.perf_counter() - t0:.0f}s -> {salida}")
+    if res.conteo is None:
+        typer.secho(
+            f"Sin geometría ({c.geometria}): no hay conteo. Marcala con "
+            f"`atlas-traffic geometry --clip {c.id}`.",
+            fg=typer.colors.YELLOW,
+        )
+    else:
+        typer.echo("\nConteo por aproximación (cruces únicos):")
+        typer.echo(res.conteo.to_string())
 
     if debug_video:
         import pandas as pd
@@ -73,7 +90,9 @@ def run(
         ruta_estab = salida / "estabilizacion.parquet"
         estab = pd.read_parquet(ruta_estab) if ruta_estab.exists() else None
         geo = load_geometria(c.geometria) if c.geometria.exists() else None
-        ruta = video_debug(c.archivo, det, salida / "debug.mp4", geo, estab)
+        ruta_cruces = salida / "cruces.parquet"
+        cruces = pd.read_parquet(ruta_cruces) if ruta_cruces.exists() else None
+        ruta = video_debug(c.archivo, det, salida / "debug.mp4", geo, estab, cruces)
         typer.echo(f"Video de debug -> {ruta}")
         if estab is not None:
             ruta = video_estabilizado(c.archivo, estab, salida / "estabilizado.mp4")
