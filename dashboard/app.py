@@ -17,6 +17,13 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+RAIZ = Path(__file__).resolve().parents[1]
+DEMO = RAIZ / "demo" / "outputs"  # datos publicados (scripts/publicar_demo.py)
+try:
+    import atlas_traffic  # noqa: F401
+except ImportError:  # Streamlit Community Cloud: el paquete no se instala, se usa src/
+    sys.path.insert(0, str(RAIZ / "src"))
+
 from atlas_traffic.config import DEFAULT_CONFIG_PATH, load_app_config
 from atlas_traffic.consulta import (
     ORDEN_CONGESTION,
@@ -258,6 +265,12 @@ def main() -> None:
     st.title("ATLAS Traffic")
     cfg = load_app_config(_config_path())
     datos = _cargar(str(cfg.rutas.outputs.resolve()))
+    if datos.vacio and (DEMO / "summary.parquet").exists():
+        # sin datos locales (por ejemplo, en la nube): se muestran los publicados
+        datos = _cargar(str(DEMO))
+        st.info("Datos de demostración: tres clips de muestra de 23 a 50 s, grabados con el "
+                "teléfono en la mano y enviados por WhatsApp (464 × 832). Ver limitaciones en "
+                "el README del repositorio.")  # fmt: skip
     if datos.vacio:
         st.warning("No hay datos consolidados en outputs/. Corré `atlas-traffic batch` primero.")
         st.stop()

@@ -132,8 +132,29 @@ def test_dashboard_renderiza(tmp_path, monkeypatch, con_datos):
     if con_datos:
         assert [t.label for t in at.tabs] == ["Panorama", "Eventos", "Consulta"]
         assert any(m.value == "4" for m in at.metric)  # vehículos de la consulta sin filtros
+        assert not any("demostración" in i.value for i in at.info)
     else:
-        assert any("batch" in w.value for w in at.warning)
+        # sin datos locales: usa los publicados en demo/ (como en Streamlit Cloud)
+        assert any("demostración" in i.value for i in at.info)
+        assert [t.label for t in at.tabs] == ["Panorama", "Eventos", "Consulta"]
+
+
+def test_dashboard_sin_datos_ni_demo(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    import shutil
+
+    from streamlit.testing.v1 import AppTest
+
+    # copia del dashboard fuera del repo: no hay carpeta demo/ al lado
+    (tmp_path / "dashboard").mkdir()
+    shutil.copy(RAIZ / "dashboard/app.py", tmp_path / "dashboard/app.py")
+    (tmp_path / "configs").mkdir()
+    (tmp_path / "configs/default.yaml").write_text(
+        yaml.safe_dump({"rutas": {"outputs": "out"}}), encoding="utf-8")  # fmt: skip
+    monkeypatch.chdir(tmp_path)
+    at = AppTest.from_file(str(tmp_path / "dashboard/app.py"), default_timeout=60).run()
+    assert not at.exception, at.exception
+    assert any("batch" in w.value for w in at.warning)
 
 
 def test_dashboard_vista_directa(tmp_path, monkeypatch):

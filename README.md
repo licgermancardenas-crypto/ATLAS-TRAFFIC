@@ -51,6 +51,11 @@ homografía, y el conteo trabaja en esas coordenadas fijas.
   descarga a CSV. Cualquier consulta se comparte por URL, por ejemplo
   `?vista=consulta&color=blanco&desde=10&hasta=30`.
 
+**Online:** el dashboard se publica en Streamlit Community Cloud desde este repo
+(`dashboard/app.py`, dependencias en `dashboard/requirements.txt`). Muestra los datos de
+`demo/outputs/`, que se actualizan con `python scripts/publicar_demo.py` después de
+`atlas-traffic batch`. Al subir a `main`, la app se actualiza sola.
+
 ## Instalación
 
 ```bash
@@ -159,7 +164,7 @@ cumplió del todo.
 | Sentido contrario | cero falsos positivos | ✅ 0 eventos en 3 clips; la prueba controlada dispara en 81 de 84 cruces | [validacion_alertas.md](docs/validacion_alertas.md) |
 | Congestión | congestionado = HIGH, liviano = LOW, sin ajuste manual | ✅ con la salvedad del supuesto de flujo libre | [validacion_congestion.md](docs/validacion_congestion.md) |
 | Batch | un comando reprocesa todo | ✅ 3 clips en 577 s | — |
-| Dashboard | la consulta del brief en tres clics, verificable con recortes | ✅ 8 vehículos, 8 recortes | captura de arriba |
+| Dashboard | la consulta del brief en tres clics, verificable con recortes | ✅ 9 vehículos, 9 recortes | captura de arriba |
 
 **Cómo se validó:**
 - **Conteo:** el conteo de referencia no usa el detector. Se armó un barrido temporal de

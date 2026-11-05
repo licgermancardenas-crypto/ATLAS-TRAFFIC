@@ -45,3 +45,7 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# el dashboard agrega src/ al path antes de importar el paquete (Streamlit Cloud)
+"dashboard/app.py" = ["E402"]
