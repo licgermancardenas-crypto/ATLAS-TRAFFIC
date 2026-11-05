@@ -79,6 +79,11 @@ def run(
     else:
         typer.echo("\nConteo por aproximación (cruces únicos):")
         typer.echo(res.conteo.to_string())
+    if res.intervalos is not None:
+        cols = ["t_inicio_s", "t_fin_s", "flujo_veh_min", "flujo_peat_min", "densidad_media",
+                "velocidad_media_px"]  # fmt: skip
+        typer.echo(f"\nIntervalos de {cfg.metricas.intervalo_s} s:")
+        typer.echo(res.intervalos[cols].round(2).to_string(index=False))
 
     if debug_video:
         import pandas as pd

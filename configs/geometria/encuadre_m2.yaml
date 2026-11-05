@@ -17,12 +17,12 @@ roi:
 lineas:
 - id: av_cordoba_frente
   puntos:
-  - [200, 670]
-  - [430, 545]
+  - [176, 641]
+  - [400, 523]
   sentido_positivo: saliente
 - id: av_cordoba_fondo
   puntos:
-  - [25, 410]
+  - [8, 468]
   - [65, 335]
   sentido_positivo: entrante
 - id: rodriguez_pena_der

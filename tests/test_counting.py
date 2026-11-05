@@ -126,3 +126,11 @@ def test_anotar_tracks():
     assert list(anotar_tracks(t.reset_index(), contar(det, GEO)).columns) == list(
         t.reset_index().columns
     )
+
+
+def test_track_que_aparece_dentro_de_la_banda_y_sale_cuenta():
+    # detectado tarde, a 1 px de la línea del lado negativo, y después se aleja hacia el
+    # lado positivo: cruzó
+    assert [c[2] for c in _cruces([99, 104, 120, 140])] == [True]
+    # aparece en la banda y se queda temblando: no cuenta
+    assert _cruces([99, 102, 98, 101, 99]) == []

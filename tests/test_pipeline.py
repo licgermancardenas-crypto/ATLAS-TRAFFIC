@@ -98,6 +98,10 @@ def test_correr_clip_escribe_parquets(video, tmp_path):
     salida = correr_clip(clip, cfg, FakeDetector(_guion()))
     assert len(pd.read_parquet(salida / "detecciones.parquet")) == 13
     assert not (salida / "estabilizacion.parquet").exists()
+    import json
+
+    meta = json.loads((salida / "corrida.json").read_text(encoding="utf-8"))
+    assert meta["frames_leidos"] == 10 and meta["duracion_s"] == pytest.approx(1.0)
     res = analizar_clip(clip, cfg)  # sin geometría: tracks sí, conteo no
     assert res.conteo is None
     assert len(pd.read_parquet(salida / "tracks.parquet")) == 2
@@ -125,6 +129,9 @@ def test_analizar_clip_con_geometria_cuenta(video, tmp_path):
     tracks = pd.read_parquet(res.salida / "tracks.parquet").set_index("track_id")
     assert bool(tracks.loc[1, "cruzo_linea"]) and not tracks.loc[2, "cruzo_linea"]
     assert (res.salida / "conteo.csv").exists()
+    iv = pd.read_parquet(res.salida / "intervalos.parquet")
+    assert len(iv) == 1 and iv.loc[0, "duracion_s"] == pytest.approx(1.0)
+    assert iv.loc[0, "flujo_veh_min"] == pytest.approx(60.0)  # 1 vehículo en 1 s
 
 
 def test_analizar_sin_detecciones_falla(video, tmp_path):

@@ -14,6 +14,7 @@ detecciones crudas.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +26,7 @@ import pandas as pd
 from atlas_traffic.config import AppConfig, Clip, EstabilizacionCfg, load_geometria
 from atlas_traffic.counting import anotar_tracks, contar, resumen_conteo
 from atlas_traffic.detect import Detector
+from atlas_traffic.metrics import calcular_intervalos
 from atlas_traffic.stabilize import (
     Estabilizador,
     mascara_sin_cajas,
@@ -45,6 +47,8 @@ COLUMNAS_ESTABILIZACION = ["frame", "inliers", "ok"] + [
 class ResultadoDeteccion:
     detecciones: pd.DataFrame
     estabilizacion: pd.DataFrame  # vacío si la estabilización está apagada
+    frames_leidos: int = 0  # frames del video recorridos (procesados o salteados)
+    fps: float = 30.0
 
 
 @dataclass(frozen=True)
@@ -142,7 +146,7 @@ def detectar_video(
     df_estab = pd.DataFrame(filas_estab, columns=COLUMNAS_ESTABILIZACION)
     if estab is not None and not df_estab.empty:
         df_estab = _aplicar_estabilizacion(df, df_estab, estabilizacion.ventana_suavizado)
-    return ResultadoDeteccion(df, df_estab)
+    return ResultadoDeteccion(df, df_estab, frames_leidos=frame_idx, fps=info.fps)
 
 
 def _aplicar_estabilizacion(det: pd.DataFrame, estab: pd.DataFrame, ventana: int) -> pd.DataFrame:
@@ -230,13 +234,35 @@ def correr_clip(
         res.estabilizacion.to_parquet(estab_path, index=False)
     elif estab_path.exists():
         estab_path.unlink()  # no dejar el diagnóstico de una corrida anterior
+    meta = {
+        "clip_id": clip.id,
+        "fps": res.fps,
+        "paso_frames": cfg.video.paso_frames,
+        "frames_leidos": res.frames_leidos,
+        "duracion_s": res.frames_leidos / res.fps,
+        "modelo": cfg.deteccion.modelo,
+        "imgsz": cfg.deteccion.imgsz,
+    }
+    (salida / "corrida.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return salida
+
+
+def leer_corrida(salida: Path, clip: Clip, cfg: AppConfig, det: pd.DataFrame) -> dict:
+    """Metadatos de la corrida. Si no hay corrida.json (corridas viejas), los estima."""
+    ruta = salida / "corrida.json"
+    if ruta.exists():
+        return json.loads(ruta.read_text(encoding="utf-8"))
+    fps = info_video(clip.archivo).fps
+    leidos = int(det["frame"].max()) + 1 if not det.empty else 0
+    return {"fps": fps, "paso_frames": cfg.video.paso_frames, "frames_leidos": leidos,
+            "duracion_s": leidos / fps}  # fmt: skip
 
 
 @dataclass(frozen=True)
 class ResultadoAnalisis:
     salida: Path
     conteo: pd.DataFrame | None  # aproximación x sentido x clase; None si no hay geometría
+    intervalos: pd.DataFrame | None = None  # una fila por ventana; None si no hay geometría
 
 
 def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
@@ -250,9 +276,10 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
     if not ruta_det.exists():
         raise FileNotFoundError(f"no hay detecciones para {clip.id}: corré `run` sin reusar")
     det = pd.read_parquet(ruta_det)
-    ventana = max(1, round(cfg.metricas.ventana_velocidad_s * info_video(clip.archivo).fps))
+    meta = leer_corrida(salida, clip, cfg, det)
+    ventana = max(1, round(cfg.metricas.ventana_velocidad_s * meta["fps"]))
     tracks = tracks_desde_detecciones(det, ventana)
-    conteo = None
+    conteo = intervalos = None
     if clip.geometria.exists():
         geo = load_geometria(clip.geometria)
         cruces = contar(det, geo, cfg.conteo.margen_px)
@@ -260,8 +287,17 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
         conteo = resumen_conteo(cruces, geo)
         conteo.to_csv(salida / "conteo.csv")
         tracks = anotar_tracks(tracks, cruces)
+        intervalos = calcular_intervalos(
+            det, cruces, geo, clip.id,
+            duracion_s=meta["duracion_s"],
+            frames_procesados=np.arange(0, meta["frames_leidos"], meta["paso_frames"]),
+            fps=meta["fps"],
+            intervalo_s=cfg.metricas.intervalo_s,
+            ventana_frames=ventana,
+        )  # fmt: skip
+        intervalos.to_parquet(salida / "intervalos.parquet", index=False)
     else:
-        for viejo in ("cruces.parquet", "conteo.csv"):
+        for viejo in ("cruces.parquet", "conteo.csv", "intervalos.parquet"):
             (salida / viejo).unlink(missing_ok=True)
     tracks.to_parquet(salida / "tracks.parquet", index=False)
-    return ResultadoAnalisis(salida, conteo)
+    return ResultadoAnalisis(salida, conteo, intervalos)

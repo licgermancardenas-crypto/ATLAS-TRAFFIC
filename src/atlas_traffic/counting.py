@@ -55,6 +55,11 @@ def cruces_de_track(
     dist = lado(linea, xy) / np.hypot(*(b - a))  # distancia con signo, en px
     cruces: list[tuple[int, float, bool]] = []
     estado, idx_estado = 0, -1  # lado vigente (fuera de la banda muerta) y su último punto
+    # Un track que aparece ya dentro de la banda muerta (detectado tarde, justo sobre la
+    # línea) toma como lado inicial el de su primer punto: si después sale por el otro
+    # lado, cruzó. Sin esto esos vehículos no contaban.
+    if dist[0] != 0:
+        estado, idx_estado = (1 if dist[0] > 0 else -1), 0
     for i, d in enumerate(dist):
         signo = 1 if d > margen_px else -1 if d < -margen_px else 0
         if signo == 0:
