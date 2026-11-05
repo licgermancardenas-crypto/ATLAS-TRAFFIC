@@ -40,7 +40,8 @@ def test_default_yaml_del_repo_es_valido():
 
 def test_clips_yaml_del_repo_es_valido():
     clips = load_clips(RAIZ / "configs/clips.yaml")
-    assert get_clip(clips, "2026-09-15_0800_mar").tipo_dia == "habil"
+    assert len(clips) >= 1
+    assert get_clip(clips, clips[0].id) is clips[0]
     with pytest.raises(KeyError):
         get_clip(clips, "no-existe")
 

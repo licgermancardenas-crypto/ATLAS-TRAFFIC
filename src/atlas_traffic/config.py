@@ -38,9 +38,20 @@ class DeteccionCfg(_Modelo):
     detector: str = "ultralytics"  # nombre en el registro de detect.py
     modelo: str = "yolov8n.pt"  # yolov8n para iterar, yolov8s para la corrida final
     dispositivo: str = "cpu"
-    confianza_min: float = Field(0.3, ge=0.0, le=1.0)
+    confianza_min: float = Field(
+        0.1, ge=0.0, le=1.0
+    )  # bajo a propósito: ByteTrack re-asocia con las débiles
     iou: float = Field(0.5, ge=0.0, le=1.0)
-    tracker: str = "bytetrack.yaml"
+    tracker: str = "configs/bytetrack.yaml"
+    imgsz: int = Field(640, ge=32, multiple_of=32)  # lado de inferencia; subir ayuda a lo lejano
+
+    def kwargs_motor(self) -> dict[str, object]:
+        """Argumentos para la fábrica del detector (todo menos el nombre)."""
+        return self.model_dump(exclude={"detector"})
+
+
+class VideoCfg(_Modelo):
+    paso_frames: int = Field(2, ge=1)  # procesar 1 de cada N frames (60 fps -> 2 da 30 fps)
 
 
 class MetricasCfg(_Modelo):
@@ -67,6 +78,7 @@ class RutasCfg(_Modelo):
 
 class AppConfig(_Modelo):
     deteccion: DeteccionCfg = DeteccionCfg()
+    video: VideoCfg = VideoCfg()
     metricas: MetricasCfg = MetricasCfg()
     color: ColorCfg = ColorCfg()
     alertas: AlertasCfg = AlertasCfg()

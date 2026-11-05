@@ -4,9 +4,13 @@ deteccion:
   detector: ultralytics      # nombre en el registro de detect.py (ultralytics | fake)
   modelo: yolov8n.pt         # yolov8n para iterar, yolov8s para la corrida final
   dispositivo: cpu
-  confianza_min: 0.3
+  confianza_min: 0.1        # bajo a propósito: ByteTrack usa las detecciones débiles para re-asociar
   iou: 0.5
-  tracker: bytetrack.yaml
+  tracker: configs/bytetrack.yaml
+  imgsz: 640
+
+video:
+  paso_frames: 2             # 1 de cada 2 frames: 60 fps -> 30 fps efectivos
 
 metricas:
   intervalo_s: 30            # ventana de agregación de intervalos.parquet

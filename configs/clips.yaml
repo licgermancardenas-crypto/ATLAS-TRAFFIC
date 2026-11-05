@@ -1,13 +1,36 @@
 # Registro de clips. Se carga a mano al grabar: es la fuente de verdad del contexto.
 # Validado por atlas_traffic.config.ClipsFile (dia_semana debe coincidir con fecha).
+#
+# Muestras iniciales (WhatsApp, 464x832, 60 fps, cámara en mano).
+# PROVISORIO: fecha y hora_inicio son estimadas — corregir con los datos reales.
 
 clips:
-  - id: 2026-09-15_0800_mar
-    archivo: data/raw/2026-09-15_0800.mp4
-    fecha: 2026-09-15
-    hora_inicio: "08:00"
-    dia_semana: martes
+  - id: muestra_1
+    archivo: data/raw/muestra_1.mp4
+    fecha: 2026-11-04
+    hora_inicio: "19:30"
+    dia_semana: miercoles
     tipo_dia: habil
-    clima: despejado
-    geometria: configs/geometria/encuadre_a.yaml
-    notas: "hora pico mañana"
+    clima: lluvia
+    geometria: configs/geometria/encuadre_m1.yaml
+    notas: "anochecer con lluvia, 23 s; hora estimada"
+
+  - id: muestra_2
+    archivo: data/raw/muestra_2.mp4
+    fecha: 2026-11-04
+    hora_inicio: "12:00"
+    dia_semana: miercoles
+    tipo_dia: habil
+    clima: nublado
+    geometria: configs/geometria/encuadre_m2.yaml
+    notas: "vista al cruce, flujo moderado, 50 s; hora estimada"
+
+  - id: muestra_3
+    archivo: data/raw/muestra_3.mp4
+    fecha: 2026-11-04
+    hora_inicio: "12:00"
+    dia_semana: miercoles
+    tipo_dia: habil
+    clima: nublado
+    geometria: configs/geometria/encuadre_m3.yaml
+    notas: "vista a la avenida con cola de autos, 46 s; hora estimada"

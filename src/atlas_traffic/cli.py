@@ -30,10 +30,46 @@ def _pendiente(fase: str) -> None:
 def run(
     clip: str = typer.Option(..., "--clip", help="id del clip en clips.yaml."),
     config: Path = ConfigOpt,
+    max_segundos: float | None = typer.Option(
+        None, "--max-segundos", help="Procesar solo los primeros N segundos."
+    ),
+    modelo: str | None = typer.Option(None, "--modelo", help="Pisa deteccion.modelo."),
+    imgsz: int | None = typer.Option(None, "--imgsz", help="Pisa deteccion.imgsz."),
+    debug_video: bool = typer.Option(
+        False, "--debug-video", help="Escribe debug.mp4 con cajas e IDs para revisar a ojo."
+    ),
 ) -> None:
     """Procesa un clip: detección, tracking, conteo, métricas y eventos."""
-    load_app_config(config)
-    _pendiente("Fase 1")
+    import time
+
+    from atlas_traffic.clips import get_clip, load_clips
+    from atlas_traffic.detect import crear_detector
+    from atlas_traffic.pipeline import correr_clip
+
+    cfg = load_app_config(config)
+    cambios = {k: v for k, v in {"modelo": modelo, "imgsz": imgsz}.items() if v is not None}
+    if cambios:
+        cfg = cfg.model_copy(update={"deteccion": cfg.deteccion.model_copy(update=cambios)})
+    c = get_clip(load_clips(cfg.rutas.clips), clip)
+    detector = crear_detector(cfg.deteccion.detector, **cfg.deteccion.kwargs_motor())
+
+    t0 = time.perf_counter()
+    with typer.progressbar(length=1, label=f"Procesando {c.id}") as barra:
+
+        def progreso(i: int, total: int) -> None:
+            barra.length = total
+            barra.update(i - barra.pos)
+
+        salida = correr_clip(c, cfg, detector, max_segundos, progreso)
+    typer.echo(f"Listo en {time.perf_counter() - t0:.0f}s -> {salida}")
+
+    if debug_video:
+        import pandas as pd
+
+        from atlas_traffic.render import video_debug
+
+        det = pd.read_parquet(salida / "detecciones.parquet")
+        typer.echo(f"Video de debug -> {video_debug(c.archivo, det, salida / 'debug.mp4')}")
 
 
 @app.command()

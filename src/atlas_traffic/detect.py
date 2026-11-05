@@ -103,3 +103,86 @@ class FakeDetector:
 
     def reset(self) -> None:
         self._i = 0
+
+
+# --------------------------------------------------------------------------- Ultralytics
+
+# Mapeo COCO -> vocabulario del proyecto. Vive acá y en ningún otro lado.
+COCO_A_PROYECTO: dict[int, tuple[str, str]] = {
+    0: ("peaton", "person"),
+    2: ("vehiculo", "car"),
+    3: ("vehiculo", "motorcycle"),
+    5: ("vehiculo", "bus"),
+    7: ("vehiculo", "truck"),
+}
+
+
+@registrar("ultralytics")
+class UltralyticsDetector:
+    """YOLO + ByteTrack vía Ultralytics (AGPL-3.0, extra `detect`).
+
+    El import es perezoso: el paquete solo carga Ultralytics si se instancia esta clase.
+    """
+
+    def __init__(
+        self,
+        modelo: str = "yolov8n.pt",
+        dispositivo: str = "cpu",
+        confianza_min: float = 0.3,
+        iou: float = 0.5,
+        tracker: str = "bytetrack.yaml",
+        imgsz: int = 640,
+    ) -> None:
+        try:
+            from ultralytics import YOLO
+        except ImportError as e:  # pragma: no cover - depende del entorno
+            raise ImportError(
+                "Falta Ultralytics. Instalalo con: uv pip install -e '.[detect]'"
+            ) from e
+        self._yolo_cls = YOLO
+        self._modelo = modelo
+        self._kw = dict(
+            persist=True,
+            tracker=tracker,
+            classes=sorted(COCO_A_PROYECTO),
+            conf=confianza_min,
+            iou=iou,
+            imgsz=imgsz,
+            device=dispositivo,
+            verbose=False,
+        )
+        self._model = YOLO(modelo)
+
+    def track(self, frame: np.ndarray) -> list[Deteccion]:
+        res = self._model.track(frame, **self._kw)[0]
+        boxes = res.boxes
+        if boxes is None or len(boxes) == 0:
+            return []
+        xyxy = boxes.xyxy.cpu().numpy().round().astype(int)
+        cls = boxes.cls.cpu().numpy().astype(int)
+        conf = boxes.conf.cpu().numpy()
+        ids = boxes.id.cpu().numpy().astype(int) if boxes.id is not None else [None] * len(cls)
+        h, w = frame.shape[:2]
+        salida: list[Deteccion] = []
+        for (x1, y1, x2, y2), c, p, tid in zip(xyxy, cls, conf, ids, strict=True):
+            if c not in COCO_A_PROYECTO:
+                continue
+            x1, y1 = max(0, int(x1)), max(0, int(y1))
+            x2, y2 = min(w, int(x2)), min(h, int(y2))
+            if x2 <= x1 or y2 <= y1:
+                continue
+            clase, detalle = COCO_A_PROYECTO[c]
+            salida.append(
+                Deteccion(
+                    bbox=(x1, y1, x2, y2),
+                    clase=clase,
+                    confianza=float(p),
+                    track_id=None if tid is None else int(tid),
+                    clase_detalle=detalle,
+                )
+            )
+        return salida
+
+    def reset(self) -> None:
+        # Un modelo nuevo trae un tracker limpio: los IDs vuelven a arrancar en 1.
+        self._model = self._yolo_cls(self._modelo)
