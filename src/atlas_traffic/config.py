@@ -83,6 +83,10 @@ class ColorCfg(_Modelo):
     # umbrales absolutos: se usan si brillo_relativo=False o no se pudo medir el fondo
     v_negro: int = Field(60, ge=0, le=255)
     v_blanco: int = Field(170, ge=0, le=255)
+    # Balance de blancos con el asfalto como referencia neutra (ver attributes.balancear).
+    balance_blancos: bool = True
+    tinte_min: float = Field(1.15, ge=1.0)  # día: ~1.03 (p95 1.13); noche: ~1.35 (p5 1.14)
+    intensidad_balance: float = Field(0.75, ge=0.0, le=1.0)
 
 
 class ConteoCfg(_Modelo):
@@ -182,6 +186,11 @@ class Linea(_Modelo):
     # Sentido de circulación legal en esa aproximación (alerta de contramano, §4d).
     # "ambos" = calle doble mano o sin dato: no genera alertas.
     sentido_permitido: Literal["entrante", "saliente", "ambos"] = "ambos"
+    # Qué cuenta la línea. Las de calzada cuentan vehículos; las de senda peatonal,
+    # personas. Por defecto, ambas (compatibilidad con geometrías viejas).
+    clases: list[Literal["vehiculo", "peaton"]] = Field(
+        default_factory=lambda: ["vehiculo", "peaton"], min_length=1
+    )
 
     @model_validator(mode="after")
     def _segmento_no_degenerado(self) -> Linea:

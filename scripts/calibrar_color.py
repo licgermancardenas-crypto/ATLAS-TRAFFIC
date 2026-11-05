@@ -1,11 +1,12 @@
 """Calibración y validación del color (Fase 3b). Ver docs/validacion_color.md.
 
-Las etiquetas manuales están en docs/validacion_color_muestras.csv, en dos muestras
-disjuntas: "calibracion" (para elegir umbrales) y "validacion" (para medir una vez).
+Las etiquetas manuales están en docs/validacion_color_muestras.csv: "calibracion" (para
+elegir umbrales), "validacion" (para medir, disjunta de la anterior) y "noche" (clip
+nocturno, para el balance de blancos).
 
 Uso:
     python scripts/calibrar_color.py buscar              # grilla de umbrales sobre calibración
-    python scripts/calibrar_color.py validar             # mide la config actual en validación
+    python scripts/calibrar_color.py validar             # mide la config actual (día y noche)
 """
 
 import itertools
@@ -18,9 +19,8 @@ import numpy as np
 import pandas as pd
 
 from atlas_traffic.attributes import (
-    COLORES,
-    brillo_fondo,
-    clasificar_pixeles,
+    color_de_muestra,
+    medir_fondo,
     muestrear,
     region_color,
     votar_color,
@@ -40,9 +40,12 @@ def leer_frame(clip: str, frame: int) -> np.ndarray:
 
 
 def extraer(muestra: pd.DataFrame, cfg: ColorCfg) -> list:
-    """Por track: lista de (hsv de la región, brillo de fondo) de los frames que votan."""
+    """Por track: lista de (región BGR, fondo medido) de los frames que votan."""
     salida, dets = [], {}
     for r in muestra.itertuples():
+        if pd.isna(r.track_id):
+            salida.append([])
+            continue
         if r.clip_id not in dets:
             dets[r.clip_id] = pd.read_parquet(
                 RAIZ / f"outputs/runs/{r.clip_id}/detecciones.parquet"
@@ -55,19 +58,13 @@ def extraer(muestra: pd.DataFrame, cfg: ColorCfg) -> list:
             cajas = det[det.frame == d.frame][["x1", "y1", "x2", "y2"]].to_numpy(dtype=int)
             caja = (d.x1, d.y1, d.x2, d.y2)
             x1, y1, x2, y2 = region_color(caja, "vehiculo")
-            hsv = cv2.cvtColor(frame[y1:y2, x1:x2], cv2.COLOR_BGR2HSV)
-            filas.append((hsv, brillo_fondo(frame, caja, cajas)))
+            filas.append((frame[y1:y2, x1:x2].copy(), medir_fondo(frame, caja, cajas)))
         salida.append(filas)
     return salida
 
 
 def predecir(frames: list, cfg: ColorCfg) -> str:
-    votos = []
-    for hsv, fondo in frames:
-        et = clasificar_pixeles(hsv, cfg, fondo).ravel()
-        et = et[et >= 0]
-        if et.size:
-            votos.append(COLORES[int(np.bincount(et, minlength=len(COLORES)).argmax())])
+    votos = [c for region, fondo in frames if (c := color_de_muestra(region, fondo, cfg))]
     return votar_color(votos, cfg.confianza_min)[0]
 
 
@@ -77,7 +74,7 @@ def puntaje(datos: list, etiquetas: list, cfg: ColorCfg) -> tuple[float, float]:
     for frames, real in zip(datos, etiquetas, strict=True):
         if isinstance(real, str):
             res[real in SATURADOS].append(predecir(frames, cfg) == real)
-    return float(np.mean(res[True])), float(np.mean(res[False]))
+    return float(np.mean(res[True])), float(np.mean(res[False]))  # saturados, acromáticos
 
 
 def main() -> None:
@@ -93,8 +90,10 @@ def main() -> None:
     lab = {m: list(g["color_manual"]) for m, g in etiquetas.groupby("muestra")}
 
     if modo == "validar":
-        s, a = puntaje(datos["validacion"], lab["validacion"], cfg_base)
-        print(f"Validación con la config actual: saturados {s:.0%}, acromáticos {a:.0%}")
+        for muestra in ("validacion", "noche"):
+            if muestra in datos:
+                s, a = puntaje(datos[muestra], lab[muestra], cfg_base)
+                print(f"{muestra}: saturados {s:.0%}, acromáticos {a:.0%}")
         return
     resultados = []
     for rn, rb, sm in itertools.product(

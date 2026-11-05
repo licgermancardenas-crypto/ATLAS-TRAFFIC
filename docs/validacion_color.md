@@ -20,48 +20,89 @@ aciertan por encima del 85 % y la familia acromática por encima del 65 %.
 
 > Las etiquetas manuales las puso Claude (Claude Code) mirando los recortes, no una persona.
 
-## Resultado (muestra de validación, 28 vehículos etiquetables)
+## Resultado actual (v3: `yolov8s` + balance de blancos)
 
-| Familia | Umbrales absolutos (v1) | Brillo relativo al asfalto (v2, actual) | Objetivo |
+| Muestra | Saturados | Acromáticos | Objetivo |
 |---|---|---|---|
-| Saturados (rojo, azul, verde, amarillo) | 82 % (9/11) | **82 %** (9/11) | > 85 % ✗ |
-| Acromáticos (blanco, gris, negro) | 41 % (7/17) | **65 %** (11/17) | > 65 % ≈ en el límite |
+| Validación, día (25 vehículos) | **88 %** | **76 %** | > 85 % y > 65 % ✅ |
+| Noche (23 vehículos) | **100 %** | **71 %** | (sin objetivo en el brief) |
 
-**No cumple estrictamente ninguno de los dos umbrales.** Con muestras tan chicas, un
-vehículo mueve el resultado entre 6 y 9 puntos: los saturados quedan a un acierto del
-objetivo y los acromáticos justo en el límite. Para una estimación firme hace falta una
-muestra más grande (~100 tracks).
+**Cumple el criterio del brief.** Se reproduce con `python scripts/calibrar_color.py validar`.
 
-### Errores que quedan
+## Historia
 
-**En validación:**
-- **Gris ↔ negro:** dos grises oscuros salieron negro y dos negros brillantes salieron
-  gris (la pintura negra refleja el cielo nublado).
-- **Blanco ↔ gris:** un blanco en sombra salió gris y un plateado salió blanco.
-- **Taxis:** dos salieron "negro", porque en esos frames se ve más la carrocería que el
-  techo.
+| Versión | Cambio | Día: saturados / acromáticos | Noche: acromáticos |
+|---|---|---|---|
+| v1 | umbrales absolutos de brillo, `yolov8n` | 82 % / 41 % | — |
+| v2 | brillo relativo al asfalto, `yolov8n` | 82 % / 65 % | — |
+| v3a | v2 con `yolov8s` (cajas más ajustadas) | 88 % / 76 % | 24 % |
+| v3b | v3a + balance de blancos (actual) | **88 % / 76 %** | **71 %** |
 
-**En calibración**, con los mismos umbrales: saturados 92 %, acromáticos 82 %.
+La muestra nocturna se etiquetó sobre los tracks de `yolov8s`, así que no hay medición
+nocturna de v1 ni de v2.
 
-## Qué cambió de v1 a v2
+### v1 → v2: brillo relativo al asfalto
 
 - **v1:** umbrales absolutos de brillo, negro si V < 60 y blanco si V ≥ 170. Los 7 autos
-  negros de la validación salieron "gris".
+  negros de la validación salieron "gris": la pintura negra refleja el cielo nublado.
 - **v2:** el brillo se compara con el del asfalto que rodea a la caja en el mismo frame
   (mediana de un anillo alrededor, sin otras cajas):
   - negro = V < 0.6 × fondo;
   - blanco = acromático con V ≥ 1.3 × fondo;
   - saturación mínima 40.
 
-  Los umbrales salieron de la búsqueda en grilla sobre la muestra de calibración.
+  Los umbrales salieron de una búsqueda en grilla sobre la muestra de calibración.
+
+### v2 → v3
+
+**`yolov8s`:** el modelo más grande dibuja cajas más ajustadas, y la región de la que
+sale el color tiene menos asfalto y menos fondo. Solo con eso, el día pasó de 82 % / 65 %
+a 88 % / 76 %.
+
+**Balance de blancos para la noche:**
+- **El problema:** de noche, la luz naranja del alumbrado de sodio tiñe todo. 10 de 13
+  autos blancos o plateados salían "amarillo".
+- **La corrección:** el asfalto es gris neutro, así que el tinte del asfalto que rodea al
+  auto es el tinte de la luz. Se le quita al auto antes de clasificar.
+  - Intensidad 0.75: con 1.0 la corrección se pasa y algunos blancos salen "azul".
+- **Cuándo se aplica:** solo si el asfalto está teñido, con canal máximo / mínimo mayor
+  a 1.15.
+  - De día el tinte es ~1.03 (el 95 % por debajo de 1.13); de noche, ~1.35 (el 95 % por
+    encima de 1.14).
+  - El umbral sale de esa distribución, no de los aciertos.
+  - Aplicada siempre, empeoraba el día (de 76 % a 71 %). Con la condición, el día no
+    cambia.
+- **Advertencia:** la intensidad (0.75) se eligió mirando la propia muestra nocturna, así
+  que el 71 % de noche es optimista. Hace falta otra muestra nocturna para medirlo sin
+  sesgo.
+
+### Reasignación de etiquetas al pasar a `yolov8s`
+
+Las etiquetas originales apuntaban a números de track de `yolov8n`, y `yolov8s` numera
+distinto. Cada etiqueta se reasignó al track de `yolov8s` que más se superpone (IoU > 0.3
+por frame) con el track viejo: el mismo vehículo físico, así que la etiqueta puesta a
+ciegas sigue valiendo. Hubo tres ajustes:
+
+- **4 etiquetas con superposición menor al 50 %:** excluidas por dudosas.
+- **Duplicados:** dos taxis que `yolov8n` partía en dos IDs ahora son un solo track y
+  cuentan una vez.
+- **Filtración entre muestras:** un taxi quedó en calibración y en validación a la vez;
+  se sacó de validación.
+
+Todo queda registrado en las columnas `track_id_yolov8n`, `cobertura` y `nota` del CSV.
+
+### Errores que quedan
+
+- **Día:** la confusión acromática de siempre (gris oscuro ↔ negro, blanco en sombra ↔
+  gris) y algún taxi donde se ve más carrocería negra que techo amarillo.
+- **Noche:** algunos plateados salen "indefinido" o "blanco", y un blanco sale "azul" por
+  sobrecorrección.
 
 ## Limitaciones (van al README)
 
 - **La familia acromática concentra el error,** como anticipa el brief. Blanco, plata y
   gris claro se confunden según la luz.
-- **De noche el color no es confiable.** En muestra_1, de unos 12 vehículos clasificados
-  "amarillo", solo ~4 son taxis: el resto son autos blancos o plateados teñidos por la luz
-  naranja del alumbrado. Una corrección de balance de blancos por frame podría mitigarlo;
-  no está implementada.
+- **De noche** el balance de blancos recupera la mayoría de los blancos y plateados, pero
+  la medición nocturna es optimista (ver la advertencia de v3).
 - **El video de WhatsApp (464 × 832) deja autos de 30–60 px de ancho.** El video original
   debería mejorar todo esto.

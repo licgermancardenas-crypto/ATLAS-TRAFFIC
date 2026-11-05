@@ -106,3 +106,31 @@ def test_extraer_atributos_sobre_video(tmp_path: Path):
     assert pd.isna(out.loc[3, "color"])  # peatones sin color
     for tid in (1, 2, 3):
         assert (tmp_path / out.loc[tid, "thumb"]).exists()
+
+
+def test_balance_de_blancos_quita_el_tinte_naranja_de_noche():
+    from atlas_traffic.attributes import Fondo, balancear, color_de_muestra, tinte
+
+    # asfalto gris iluminado con luz de sodio: R alto, B bajo (BGR)
+    fondo_noche = Fondo(v=120.0, bgr=np.array([60.0, 90.0, 120.0]))
+    # un auto blanco bajo esa luz: también se ve anaranjado
+    auto_blanco = np.full((20, 20, 3), (150, 200, 245), np.uint8)
+    assert tinte(fondo_noche) == pytest.approx(2.0)
+    assert color_de_muestra(auto_blanco, fondo_noche, CFG.model_copy(
+        update={"balance_blancos": False})) == "amarillo"  # fmt: skip
+    assert color_de_muestra(auto_blanco, fondo_noche, CFG) == "blanco"
+    # sigue reconociendo un taxi (amarillo de verdad, mucho más saturado que el tinte)
+    techo_taxi = np.full((20, 20, 3), (0, 200, 255), np.uint8)
+    assert color_de_muestra(techo_taxi, fondo_noche, CFG) == "amarillo"
+    corregida, v = balancear(auto_blanco, fondo_noche, CFG)
+    assert v == pytest.approx(90.0)
+
+
+def test_balance_no_toca_el_dia():
+    from atlas_traffic.attributes import Fondo, balancear
+
+    fondo_dia = Fondo(v=130.0, bgr=np.array([128.0, 130.0, 133.0]))  # tinte ~1.04
+    region = np.full((5, 5, 3), (10, 200, 30), np.uint8)
+    corregida, v = balancear(region, fondo_dia, CFG)
+    assert np.array_equal(corregida, region) and v == 130.0
+    assert balancear(region, None, CFG) == (region, None)

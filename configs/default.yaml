@@ -37,6 +37,9 @@ color:
   r_blanco: 1.3              # acromático con V >= 1.3 x fondo -> blanco
   v_negro: 60                # umbrales absolutos: solo si no se puede medir el fondo
   v_blanco: 170
+  balance_blancos: true      # quita el tinte de la luz (alumbrado naranja de noche)
+  tinte_min: 1.15            # solo si el asfalto está teñido (día ~1.03, noche ~1.35)
+  intensidad_balance: 0.75
 
 alertas:
   min_frames_historia: 15    # ignora tracks más cortos (ruido del tracker)

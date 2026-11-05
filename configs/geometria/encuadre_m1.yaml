@@ -20,24 +20,35 @@ lineas:
   - [464, 552]
   sentido_positivo: saliente
   sentido_permitido: entrante
+  clases: [vehiculo]
 - id: av_cordoba_fondo
   puntos:
   - [62, 392]
   - [265, 365]
   sentido_positivo: entrante
   sentido_permitido: saliente
+  clases: [vehiculo]
 - id: rodriguez_pena_der
   puntos:
   - [445, 388]
   - [445, 475]
   sentido_positivo: entrante
   sentido_permitido: entrante
+  clases: [vehiculo]
 - id: rodriguez_pena_izq
   puntos:
   - [60, 428]
   - [60, 515]
   sentido_positivo: saliente
   sentido_permitido: saliente
+  clases: [vehiculo]
+- id: senda_cordoba
+  puntos:
+  - [266, 480]
+  - [314, 530]
+  sentido_positivo: saliente
+  sentido_permitido: ambos
+  clases: [peaton]
 exclusiones:
 - - [268, 335]
   - [357, 335]

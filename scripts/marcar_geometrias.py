@@ -85,6 +85,20 @@ PERMITIDO = {
     "rodriguez_pena_izq": "saliente",
 }
 
+# Líneas de peatones: atraviesan por la mitad la senda peatonal que cruza Córdoba del lado
+# de la cámara (corte paralelo a la avenida): toda persona que cruza la avenida la corta.
+SENDAS = {
+    "encuadre_m1": {"senda_cordoba": ((266, 480), (314, 530))},
+    "encuadre_m2": {
+        "senda_cordoba": ((138, 482), (192, 528)),
+        "senda_rodriguez_pena": ((259, 382), (241, 422)),  # cruza R. Peña (esquina derecha)
+    },
+    "encuadre_m3": {
+        "senda_cordoba": ((281, 511), (319, 569)),
+        "senda_cordoba_fondo": ((188, 404), (212, 436)),  # cruza Córdoba del otro lado
+    },
+}
+
 # Zonas de exclusión: objetos fijos de la escena que el detector toma por vehículos.
 # Cajas medidas con las detecciones de yolov8s (centro +/- 1.15 x semiancho/semialto).
 EXCLUSIONES: dict[str, list[list[tuple[int, int]]]] = {
@@ -99,7 +113,12 @@ for encuadre, spec in ENCUADRES.items():
         provisoria = Linea(id=id_, puntos=puntos, sentido_positivo="entrante")
         sentido = "entrante" if lado(provisoria, spec["centro"]) > 0 else "saliente"
         lineas.append(Linea(id=id_, puntos=puntos, sentido_positivo=sentido,
-                            sentido_permitido=PERMITIDO.get(id_, "ambos")))  # fmt: skip
+                            sentido_permitido=PERMITIDO.get(id_, "ambos"),
+                            clases=["vehiculo"]))  # fmt: skip
+    for id_, puntos in SENDAS.get(encuadre, {}).items():
+        provisoria = Linea(id=id_, puntos=puntos, sentido_positivo="entrante")
+        sentido = "entrante" if lado(provisoria, spec["centro"]) > 0 else "saliente"
+        lineas.append(Linea(id=id_, puntos=puntos, sentido_positivo=sentido, clases=["peaton"]))
     geo = Geometria(encuadre=encuadre, resolucion=(464, 832), roi=spec["roi"], lineas=lineas,
                     exclusiones=EXCLUSIONES.get(encuadre, []))  # fmt: skip
     guardar_geometria(geo, RAIZ / "configs" / "geometria" / f"{encuadre}.yaml")

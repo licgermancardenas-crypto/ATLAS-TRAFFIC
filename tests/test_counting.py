@@ -134,3 +134,16 @@ def test_track_que_aparece_dentro_de_la_banda_y_sale_cuenta():
     assert [c[2] for c in _cruces([99, 104, 120, 140])] == [True]
     # aparece en la banda y se queda temblando: no cuenta
     assert _cruces([99, 102, 98, 101, 99]) == []
+
+
+def test_cada_linea_cuenta_solo_sus_clases():
+    calzada = LINEA.model_copy(update={"clases": ["vehiculo"]})
+    senda = Linea(id="senda", puntos=((100, 200), (300, 200)), sentido_positivo="entrante",
+                  clases=["peaton"])  # fmt: skip
+    geo = GEO.model_copy(update={"lineas": [calzada, senda]})
+    det = pd.concat([
+        _det({1: [(200, 60), (200, 250)]}),  # auto: cruza las dos líneas
+        _det({2: [(200, 60), (200, 250)]}, clase="peaton"),  # peatón: cruza las dos
+    ])  # fmt: skip
+    c = contar(det, geo)
+    assert set(zip(c.track_id, c.aproximacion, strict=True)) == {(1, "av"), (2, "senda")}

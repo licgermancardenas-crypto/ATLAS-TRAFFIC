@@ -28,3 +28,4 @@ Thumbs.db
 .vscode/
 .idea/
 outputs_yolov8n/
+outputs_exp/

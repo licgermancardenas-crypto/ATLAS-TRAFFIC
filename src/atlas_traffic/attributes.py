@@ -16,6 +16,10 @@
 5. Evidencia: recorte del frame donde la caja es más grande y menos ocluida, en
    thumbs/<track_id>.jpg.
 
+Balance de blancos local (ver `balancear`): de noche el alumbrado tiñe todo de naranja
+y los autos blancos medían "amarillo". Si el asfalto de alrededor está teñido, se le
+quita ese tinte al vehículo antes de clasificar.
+
 Limitación conocida (va al README): blanco, plata y gris claro se confunden según la
 luz; un vehículo blanco en sombra mide gris. Los saturados son mucho más confiables.
 Solo se clasifica el color de vehículos; los peatones quedan sin color.
@@ -23,6 +27,7 @@ Solo se clasifica el color de vehículos; los peatones quedan sin color.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
@@ -108,16 +113,15 @@ def region_color(bbox: tuple[int, int, int, int], clase: str) -> tuple[int, int,
     return int(rx1), int(ry1), max(int(rx2), int(rx1) + 1), max(int(ry2), int(ry1) + 1)
 
 
-def brillo_fondo(
+def _pixeles_anillo(
     frame: np.ndarray,
     bbox: tuple[int, int, int, int],
     cajas: np.ndarray,
     expansion: float = 0.5,
-) -> float | None:
-    """Brillo (V mediano) del entorno de la caja: un anillo alrededor, sin otras cajas.
+) -> np.ndarray | None:
+    """Píxeles BGR (N, 3) de un anillo alrededor de la caja, sin ninguna caja encima.
 
     Es casi siempre asfalto, con la misma luz que el vehículo (sol, sombra, noche).
-    Comparar contra él hace que "negro" y "blanco" no dependan de la exposición.
     """
     alto, ancho = frame.shape[:2]
     x1, y1, x2, y2 = bbox
@@ -131,8 +135,65 @@ def brillo_fondo(
         )
     if mascara.sum() < 20:
         return None
-    v = cv2.cvtColor(frame[ey1:ey2, ex1:ex2], cv2.COLOR_BGR2HSV)[..., 2]
-    return float(np.median(v[mascara]))
+    return frame[ey1:ey2, ex1:ex2][mascara]
+
+
+@dataclass(frozen=True)
+class Fondo:
+    """Luz del entorno de un vehículo, medida en el asfalto que lo rodea."""
+
+    v: float  # brillo (V mediano): referencia para negro / blanco
+    bgr: np.ndarray  # color mediano: referencia para el balance de blancos
+
+
+def medir_fondo(
+    frame: np.ndarray, bbox: tuple[int, int, int, int], cajas: np.ndarray
+) -> Fondo | None:
+    pix = _pixeles_anillo(frame, bbox, cajas)
+    if pix is None:
+        return None
+    v = cv2.cvtColor(pix.reshape(-1, 1, 3), cv2.COLOR_BGR2HSV)[..., 2]
+    return Fondo(v=float(np.median(v)), bgr=np.median(pix.astype(float), axis=0))
+
+
+def brillo_fondo(
+    frame: np.ndarray, bbox: tuple[int, int, int, int], cajas: np.ndarray
+) -> float | None:
+    """Brillo (V mediano) del asfalto alrededor de la caja."""
+    f = medir_fondo(frame, bbox, cajas)
+    return None if f is None else f.v
+
+
+def tinte(fondo: Fondo | None) -> float:
+    """Cuán teñida está la luz: canal máximo / mínimo del asfalto (1 = gris neutro)."""
+    if fondo is None or fondo.bgr.min() <= 5:
+        return 1.0
+    return float(fondo.bgr.max() / fondo.bgr.min())
+
+
+def balancear(
+    region: np.ndarray, fondo: Fondo | None, cfg: ColorCfg
+) -> tuple[np.ndarray, float | None]:
+    """Balance de blancos local: si el asfalto está teñido, se le quita ese tinte al auto.
+
+    El asfalto es gris neutro; si se ve naranja (alumbrado de sodio de noche), esa
+    dominante es la luz y no el auto. Solo se corrige con tinte mayor a `tinte_min`: a
+    la luz del día el asfalto ya es neutro (tinte ~1.03) y corregir solo agrega ruido.
+    Devuelve la región corregida y el brillo de referencia para negro / blanco.
+    """
+    v = None if fondo is None else fondo.v
+    if not cfg.balance_blancos or tinte(fondo) <= cfg.tinte_min:
+        return region, v
+    ganancia = 1 + cfg.intensidad_balance * (fondo.bgr.mean() / fondo.bgr - 1)
+    corregida = np.clip(region.astype(float) * ganancia, 0, 255).astype(np.uint8)
+    return corregida, float(fondo.bgr.mean())
+
+
+def color_de_muestra(region: np.ndarray, fondo: Fondo | None, cfg: ColorCfg) -> str | None:
+    """Color de la región de un vehículo en un frame, con balance de blancos y brillo
+    relativo al asfalto. Es lo que usan el pipeline y el script de validación."""
+    region, v = balancear(region, fondo, cfg)
+    return color_de_region(region, cfg, v)
 
 
 def umbrales_brillo(cfg: ColorCfg, v_fondo: float | None) -> tuple[float, float]:
@@ -221,9 +282,9 @@ def extraer_atributos(
                 tid = int(r.track_id)
                 if r.votar and r.clase == "vehiculo":
                     caja = (r.x1, r.y1, r.x2, r.y2)
-                    fondo = brillo_fondo(frame, caja, cajas_por_frame[i])
+                    fondo = medir_fondo(frame, caja, cajas_por_frame[i])
                     x1, y1, x2, y2 = region_color(caja, r.clase)
-                    color = color_de_region(frame[y1:y2, x1:x2], cfg, fondo)
+                    color = color_de_muestra(frame[y1:y2, x1:x2], fondo, cfg)
                     if color is not None:
                         votos.setdefault(tid, []).append(color)
                 if r.es_thumb:

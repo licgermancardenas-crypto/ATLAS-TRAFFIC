@@ -97,3 +97,8 @@ def test_guardar_evidencia(tmp_path: Path):
     # sin eventos: no rompe y limpia la carpeta
     vacio = guardar_evidencia(ruta, ev.iloc[0:0], det, GEO, tmp_path / "eventos")
     assert vacio.empty and not list((tmp_path / "eventos").glob("*.jpg"))
+
+
+def test_peatones_no_disparan_contramano():
+    det = _track(8, np.linspace(160, 40, 20)).assign(clase="peaton")
+    assert detectar_sentido_contrario(det, GEO, CFG, "c").empty

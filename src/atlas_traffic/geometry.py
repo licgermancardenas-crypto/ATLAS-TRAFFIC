@@ -140,7 +140,11 @@ class EditorGeometria:
         self.etapa = "lineas"
 
     def confirmar_linea(
-        self, id_: str, sentido_positivo: str, sentido_permitido: str = "ambos"
+        self,
+        id_: str,
+        sentido_positivo: str,
+        sentido_permitido: str = "ambos",
+        clases: list[str] | None = None,
     ) -> Linea:
         if not self.linea_lista:
             raise ValueError("marcá los dos extremos de la línea antes de confirmarla")
@@ -151,6 +155,7 @@ class EditorGeometria:
             puntos=tuple(self.pendiente),
             sentido_positivo=sentido_positivo,
             sentido_permitido=sentido_permitido,
+            clases=clases or ["vehiculo"],
         )
         self.lineas.append(linea)
         self.pendiente = []
@@ -286,9 +291,15 @@ def _pedir_datos_linea(editor: EditorGeometria) -> None:
         if permitido is None:
             print("  respondé e, s o a")
             continue
+        resp = input("  la línea cuenta [v]ehículos, [p]eatones o [a]mbos (Enter = vehículos)? ")
+        clases = {"v": ["vehiculo"], "": ["vehiculo"], "p": ["peaton"],
+                  "a": ["vehiculo", "peaton"]}.get(resp.strip()[:1].lower())  # fmt: skip
+        if clases is None:
+            print("  respondé v, p o a")
+            continue
         try:
-            editor.confirmar_linea(id_, sentido, permitido)
-            print(f"  OK: {id_} (positivo = {sentido}, permitido = {permitido})")
+            editor.confirmar_linea(id_, sentido, permitido, clases)
+            print(f"  OK: {id_} (positivo = {sentido}, permitido = {permitido}, cuenta {clases})")
             return
         except ValueError as e:
             print(f"  {e}")

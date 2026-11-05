@@ -106,7 +106,17 @@ el de su primer punto. Antes, esos vehículos nunca contaban.
 
 ## Pendiente
 
-- **Motos:** se pierden incluso con `yolov8s`. Probar más resolución de inferencia, o
-  mejor, video original sin la compresión de WhatsApp.
+- **Motos:** se pierden incluso con `yolov8s`. Se probó subir la resolución de inferencia
+  (primeros 20 s de muestra_2 y muestra_3):
+
+  | Resolución | m2 frente | m2 fondo | m3 frente | m3 fondo | m3 R. Peña izq | Tiempo |
+  |---|---|---|---|---|---|---|
+  | **640 (actual)** | −5 % | −6 % | −6 % | −50 % | ✓ | 1× |
+  | 960 | −5 % | −6 % | −11 % | −50 % | +200 % | ~2× |
+  | 1280 | 0 % | −6 % | −11 % | −50 % | +300 % | ~3× |
+
+  No ayuda: las motos lejanas siguen sin detectarse, el frente de m3 empeora y un
+  colectivo detenido se parte en varios IDs que cuentan de más. Con la compresión de
+  WhatsApp esa información ya se perdió; hace falta el video original.
 - **Noche y paneo de cámara:** se resuelven grabando con el teléfono fijo, no con
   software.

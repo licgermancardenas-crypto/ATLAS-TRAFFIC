@@ -107,6 +107,8 @@ def contar(det: pd.DataFrame, geo: Geometria, margen_px: float = 4.0) -> pd.Data
         clase = g["clase"].mode().iat[0]
         detalle = g["clase_detalle"].mode().iat[0]
         for linea in geo.lineas:
+            if clase not in linea.clases:
+                continue  # ej.: un peatón que cruza una línea de calzada no es un vehículo
             vistos: set[bool] = set()
             for frame, t, positivo in cruces_de_track(frames, ts, xy, linea, margen_px):
                 if positivo in vistos:

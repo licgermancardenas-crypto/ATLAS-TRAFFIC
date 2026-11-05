@@ -61,7 +61,11 @@ def test_editor_flujo_completo():
     assert geo.lineas[0].sentido_permitido == "ambos"  # default: no genera alertas
     ed.clic(50, 200)
     ed.clic(150, 200)
-    assert ed.confirmar_linea("calle", "saliente", "entrante").sentido_permitido == "entrante"
+    linea = ed.confirmar_linea("calle", "saliente", "entrante")
+    assert linea.sentido_permitido == "entrante" and linea.clases == ["vehiculo"]
+    ed.clic(50, 250)
+    ed.clic(150, 250)
+    assert ed.confirmar_linea("senda", "entrante", clases=["peaton"]).clases == ["peaton"]
 
 
 def test_editor_valida():

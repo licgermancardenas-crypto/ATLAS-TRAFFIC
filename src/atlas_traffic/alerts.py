@@ -55,6 +55,8 @@ def detectar_sentido_contrario(
         return pd.DataFrame(columns=COLUMNAS_EVENTOS)
     filas = []
     for tid, g in det.sort_values(["track_id", "frame"]).groupby("track_id"):
+        if g["clase"].mode().iat[0] != "vehiculo":
+            continue  # contramano es una regla de tránsito vehicular
         if len(g) < cfg.min_frames_historia:
             continue
         xy = g[["cx_ref", "cy_ref"]].to_numpy(dtype=np.float64)

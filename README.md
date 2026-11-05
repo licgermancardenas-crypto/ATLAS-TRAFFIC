@@ -154,7 +154,7 @@ cumplió del todo.
 | Fase | Criterio | Resultado | Detalle |
 |---|---|---|---|
 | Conteo | ±10 % por línea contra conteo manual | ✅ muestra_2: −4.5 %, −5.6 % y 0 %. ⚠️ muestra_3: frente ✅, fondo ✗ (motos). ❌ noche. Cero cruces falsos en los tres clips | [validacion_conteo.md](docs/validacion_conteo.md) |
-| Color | saturados > 85 %, acromáticos > 65 % | ⚠️ 82 % y 65 % (muestra de 28) | [validacion_color.md](docs/validacion_color.md) |
+| Color | saturados > 85 %, acromáticos > 65 % | ✅ día 88 % y 76 %; noche 100 % y 71 % con balance de blancos | [validacion_color.md](docs/validacion_color.md) |
 | Sentido contrario | cero falsos positivos | ✅ 0 eventos en 3 clips; la prueba controlada dispara en 81 de 84 cruces | [validacion_alertas.md](docs/validacion_alertas.md) |
 | Congestión | congestionado = HIGH, liviano = LOW, sin ajuste manual | ✅ con la salvedad del supuesto de flujo libre | [validacion_congestion.md](docs/validacion_congestion.md) |
 | Batch | un comando reprocesa todo | ✅ 3 clips en 577 s | — |
@@ -174,18 +174,24 @@ cumplió del todo.
   compresión. Fueron filmados con la cámara en mano y cada uno tiene un encuadre distinto.
   El sistema lo compensa, pero los resultados van a mejorar con video original y teléfono
   fijo en la baranda (brief §8).
-- **Peatones:** `yolov8s` detecta bastantes más que `yolov8n` (unos 20 por clip), pero el
-  flujo peatonal da 0. Las líneas de conteo atraviesan los carriles de autos, y los peatones
-  caminan por las veredas o las sendas peatonales, en paralelo a esas líneas. Para
-  contarlos hay que marcar líneas propias sobre las sendas.
+- **Peatones:**
+  - Cada línea declara qué cuenta (vehículos o peatones), y hay líneas de peatones
+    sobre las sendas peatonales.
+  - En estos clips el flujo peatonal da 0. Los peatones detectados cerca de las sendas
+    están esperando en la esquina y ninguno cruza mientras los autos tienen verde.
+  - A esta resolución los peatones miden unos 10 px y se siguen solo en tramos cortos,
+    así que el 0 no se puede confirmar del todo a ojo.
 - **Motos:** se pierden, sobre todo lejos de la cámara. En la línea del fondo de
-  muestra_3, los autos dan 5 de 5 pero las motos 0 de 5.
+  muestra_3, los autos dan 5 de 5 pero las motos 0 de 5. Subir la resolución de inferencia
+  a 960 o 1280 px no lo resuelve: con la compresión de WhatsApp las motos lejanas ya
+  perdieron la información.
 - **Noche:**
   - La detección degrada: el conteo da −36 % y −22 % en las líneas de Córdoba, siempre por
     omisión, sin cruces falsos.
   - La cámara se corre y saca del cuadro parte de las líneas.
-  - El color no es confiable: la luz naranja del alumbrado hace que autos blancos salgan
-    "amarillo" (solo ~4 de 12 "amarillos" nocturnos son taxis).
+  - La luz naranja del alumbrado hacía que los autos blancos salieran "amarillo". Un
+    balance de blancos local, que toma el asfalto como gris de referencia, lo corrige y
+    lleva los acromáticos nocturnos de 24 % a 71 % (medición optimista; ver el documento).
   - El clip nocturno queda acá y no en el demo principal.
 - **Color acromático:** blanco, plata y gris se confunden según la luz, y un blanco en
   sombra mide gris. Los colores saturados son mucho más confiables.
