@@ -74,6 +74,15 @@ class ColorCfg(_Modelo):
     max_frames: int = Field(10, gt=0)
     solape_max: float = Field(0.4, ge=0.0, le=1.0)
     confianza_min: float = Field(0.5, ge=0.0, le=1.0)
+    sat_min: int = Field(40, ge=0, le=255)  # HSV 0-255; debajo: acromático (blanco/gris)
+    # Brillo relativo al asfalto de alrededor (ver attributes.brillo_fondo):
+    # negro = V < r_negro * fondo; blanco = acromático con V >= r_blanco * fondo.
+    brillo_relativo: bool = True
+    r_negro: float = Field(0.6, gt=0)
+    r_blanco: float = Field(1.3, gt=0)
+    # umbrales absolutos: se usan si brillo_relativo=False o no se pudo medir el fondo
+    v_negro: int = Field(60, ge=0, le=255)
+    v_blanco: int = Field(170, ge=0, le=255)
 
 
 class ConteoCfg(_Modelo):

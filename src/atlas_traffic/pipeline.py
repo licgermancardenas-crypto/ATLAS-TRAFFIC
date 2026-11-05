@@ -23,6 +23,7 @@ import cv2
 import numpy as np
 import pandas as pd
 
+from atlas_traffic.attributes import extraer_atributos
 from atlas_traffic.config import AppConfig, Clip, EstabilizacionCfg, load_geometria
 from atlas_traffic.counting import anotar_tracks, contar, resumen_conteo
 from atlas_traffic.detect import Detector
@@ -299,5 +300,8 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
     else:
         for viejo in ("cruces.parquet", "conteo.csv", "intervalos.parquet"):
             (salida / viejo).unlink(missing_ok=True)
+    atributos = extraer_atributos(clip.archivo, det, cfg.color, salida / "thumbs")
+    tracks = tracks.drop(columns=["color", "color_confianza", "thumb"], errors="ignore")
+    tracks = tracks.merge(atributos, on="track_id", how="left")
     tracks.to_parquet(salida / "tracks.parquet", index=False)
     return ResultadoAnalisis(salida, conteo, intervalos)
