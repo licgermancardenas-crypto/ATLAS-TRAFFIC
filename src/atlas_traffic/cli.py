@@ -168,9 +168,55 @@ def geometry(
 
 @app.command()
 def calibrate(config: Path = ConfigOpt) -> None:
-    """Calcula umbrales de congestión por percentiles y los guarda en calibracion.yaml."""
-    load_app_config(config)
-    _pendiente("Fase 4")
+    """Calcula umbrales de congestión por percentiles y los guarda en calibracion.yaml.
+
+    Usa los intervalos y las velocidades de todos los clips ya procesados con `run`, y
+    después reclasifica la congestión de cada uno con los umbrales nuevos.
+    """
+    import numpy as np
+    import pandas as pd
+
+    from atlas_traffic.clips import load_clips
+    from atlas_traffic.config import load_geometria, save_calibracion
+    from atlas_traffic.congestion import aplicar, calibrar
+
+    cfg = load_app_config(config)
+    clips = load_clips(cfg.rutas.clips)
+    intervalos, velocidades, usados, encuadres = [], {}, [], {}
+    for c in clips:
+        salida = cfg.rutas.outputs / "runs" / c.id
+        ruta_iv, ruta_vel = salida / "intervalos.parquet", salida / "velocidades_roi.parquet"
+        if not (ruta_iv.exists() and ruta_vel.exists() and c.geometria.exists()):
+            typer.secho(f"  {c.id}: sin procesar o sin geometría, se omite", fg=typer.colors.YELLOW)
+            continue
+        enc = load_geometria(c.geometria).encuadre
+        encuadres[c.id] = enc
+        intervalos.append(pd.read_parquet(ruta_iv).assign(encuadre=enc))
+        velocidades.setdefault(enc, []).append(pd.read_parquet(ruta_vel)["vel"].to_numpy())
+        usados.append(c.id)
+    if not intervalos:
+        raise typer.BadParameter("no hay clips procesados: corré `run` primero")
+    todos = pd.concat(intervalos, ignore_index=True)
+    cal = calibrar(todos, {e: np.concatenate(v) for e, v in velocidades.items()}, usados)
+    save_calibracion(cal, cfg.rutas.calibracion)
+    typer.echo(f"Calibración con {cal.n_intervalos} intervalos de {len(usados)} clips "
+               f"-> {cfg.rutas.calibracion}")  # fmt: skip
+    p90 = {k: round(v, 2) for k, v in cal.velocidad_p90_por_encuadre.items()}
+    typer.echo(f"  velocidad de flujo libre (p90) por encuadre: {p90}")
+    typer.echo(f"  densidad: p33={cal.densidad.p33:.2f} p66={cal.densidad.p66:.2f}")
+    typer.echo(f"  velocidad normalizada: p33={cal.velocidad_norm.p33:.2f} "
+               f"p66={cal.velocidad_norm.p66:.2f}")  # fmt: skip
+
+    filas = []
+    for cid in usados:
+        ruta_iv = cfg.rutas.outputs / "runs" / cid / "intervalos.parquet"
+        iv = aplicar(pd.read_parquet(ruta_iv), encuadres[cid], cal)
+        iv.to_parquet(ruta_iv, index=False)
+        filas.append(iv)
+    tabla = pd.concat(filas)[["clip_id", "t_inicio_s", "t_fin_s", "densidad_media",
+                              "velocidad_norm", "congestion"]]  # fmt: skip
+    typer.echo("\nCongestión por intervalo:")
+    typer.echo(tabla.round(2).to_string(index=False))
 
 
 @app.command()

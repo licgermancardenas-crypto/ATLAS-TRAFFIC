@@ -30,7 +30,6 @@ def test_subcomandos_validan_config_y_salen_ok(monkeypatch):
     runner = CliRunner()
     for args in (
         ["batch"],
-        ["calibrate"],
         ["dashboard"],
     ):
         res = runner.invoke(app, args)

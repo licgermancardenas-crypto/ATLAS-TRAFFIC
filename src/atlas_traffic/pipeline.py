@@ -25,10 +25,17 @@ import pandas as pd
 
 from atlas_traffic.alerts import detectar_sentido_contrario, guardar_evidencia
 from atlas_traffic.attributes import extraer_atributos
-from atlas_traffic.config import AppConfig, Clip, EstabilizacionCfg, load_geometria
+from atlas_traffic.config import (
+    AppConfig,
+    Clip,
+    EstabilizacionCfg,
+    load_calibracion,
+    load_geometria,
+)
+from atlas_traffic.congestion import aplicar
 from atlas_traffic.counting import anotar_tracks, contar, resumen_conteo
 from atlas_traffic.detect import Detector
-from atlas_traffic.metrics import calcular_intervalos
+from atlas_traffic.metrics import calcular_intervalos, vehiculos_en_roi
 from atlas_traffic.render import homografias_por_frame
 from atlas_traffic.stabilize import (
     Estabilizador,
@@ -299,6 +306,11 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
             intervalo_s=cfg.metricas.intervalo_s,
             ventana_frames=ventana,
         )  # fmt: skip
+        # velocidades instantáneas en la ROI: insumo de la calibración de congestión
+        vel = vehiculos_en_roi(det, geo, ventana)[["frame", "track_id", "vel"]]
+        vel.dropna().to_parquet(salida / "velocidades_roi.parquet", index=False)
+        if cfg.rutas.calibracion.exists():
+            intervalos = aplicar(intervalos, geo.encuadre, load_calibracion(cfg.rutas.calibracion))
         intervalos.to_parquet(salida / "intervalos.parquet", index=False)
         eventos = detectar_sentido_contrario(det, geo, cfg.alertas, clip.id, cfg.conteo.margen_px)
         ruta_estab = salida / "estabilizacion.parquet"

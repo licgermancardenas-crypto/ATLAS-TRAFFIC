@@ -1,0 +1,16 @@
+velocidad_p90_por_encuadre:
+  encuadre_m1: 1.9248081701718147
+  encuadre_m2: 2.717189705041428
+  encuadre_m3: 0.6089004484762645
+densidad:
+  p33: 4.476196677740864
+  p66: 12.092332919254659
+velocidad_norm:
+  p33: 0.44491099572121073
+  p66: 0.523080834497568
+generado: '2026-11-05T14:16:16'
+clips:
+- muestra_1
+- muestra_2
+- muestra_3
+n_intervalos: 5

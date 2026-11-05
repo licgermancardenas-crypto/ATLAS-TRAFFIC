@@ -220,6 +220,9 @@ class Calibracion(_Modelo):
     densidad: Cortes
     velocidad_norm: Cortes
     generado: dt.datetime | None = None
+    # trazabilidad: con qué datos se calibró
+    clips: list[str] = Field(default_factory=list)
+    n_intervalos: int = 0
 
 
 # --------------------------------------------------------------------------- carga

@@ -55,6 +55,15 @@ def velocidad_instantanea(det: pd.DataFrame, ventana_frames: int) -> pd.Series:
     return pd.Series(valores, index=det.index)
 
 
+def vehiculos_en_roi(det: pd.DataFrame, geo: Geometria, ventana_frames: int) -> pd.DataFrame:
+    """Detecciones de vehículos con el centroide dentro de la ROI, con su velocidad (`vel`)."""
+    veh = det[det["clase"] == "vehiculo"]
+    if veh.empty:
+        return veh.assign(vel=pd.Series(dtype=float))
+    veh = veh.assign(vel=velocidad_instantanea(veh, ventana_frames))
+    return veh[dentro_roi(geo.roi, veh[["cx_ref", "cy_ref"]].to_numpy())]
+
+
 def calcular_intervalos(
     det: pd.DataFrame,
     cruces: pd.DataFrame,
@@ -84,13 +93,7 @@ def calcular_intervalos(
                 flujo[clase][b] = n
 
     # densidad y velocidad: vehículos dentro de la ROI
-    veh = det[det["clase"] == "vehiculo"]
-    if not veh.empty:
-        veh = veh.assign(
-            en_roi=dentro_roi(geo.roi, veh[["cx_ref", "cy_ref"]].to_numpy()),
-            vel=velocidad_instantanea(veh, ventana_frames),
-        )
-        veh = veh[veh["en_roi"]]
+    veh = vehiculos_en_roi(det, geo, ventana_frames)
     por_frame = veh.groupby("frame").size() if not veh.empty else pd.Series(dtype=float)
     conteo_frames = pd.Series(0.0, index=pd.Index(frames_procesados, name="frame"))
     conteo_frames.loc[por_frame.index.intersection(conteo_frames.index)] = por_frame

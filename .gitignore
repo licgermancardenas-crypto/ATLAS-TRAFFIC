@@ -19,8 +19,8 @@ outputs/*
 *.pt
 *.onnx
 
-# Generados
-configs/calibracion.yaml
+# Cachés
+outputs/color_cache.pkl
 
 # OS / IDE
 .DS_Store
