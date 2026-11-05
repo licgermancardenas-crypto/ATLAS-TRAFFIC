@@ -73,12 +73,15 @@ def dibujar_geometria(
     pendiente: Sequence[tuple[int, int]] = (),
     roi_cerrada: bool = True,
     H: np.ndarray | None = None,
+    exclusiones=(),
 ) -> np.ndarray:
     """Dibuja ROI, líneas (con id, sentido y flecha de cruce positivo) y la línea en curso.
 
     `H` lleva coordenadas de referencia al frame que se dibuja (None = son iguales).
     """
     out = frame.copy()
+    if exclusiones:
+        out = dibujar_exclusiones(out, exclusiones, H)
     if len(roi) >= 3 and roi_cerrada:
         poligono = np.round(_transformar(H, roi)).astype(np.int32)
         capa = out.copy()
@@ -175,7 +178,8 @@ def video_debug(
             if i in hs:
                 H_inv = np.linalg.inv(hs[i])  # referencia -> este frame
             if geometria is not None:
-                frame = dibujar_geometria(frame, geometria.roi, geometria.lineas, H=H_inv)
+                frame = dibujar_geometria(frame, geometria.roi, geometria.lineas, H=H_inv,
+                                          exclusiones=geometria.exclusiones)  # fmt: skip
             frame = dibujar_cajas(frame, vigentes)
             while eventos and eventos[0][0] <= i:
                 _, linea_id, sentido = eventos.pop(0)
@@ -250,6 +254,42 @@ def _flecha_permitida(img, linea: Linea, H: np.ndarray | None, escala: float) ->
     )
 
 
+COLOR_EXCLUSION = (160, 160, 160)
+
+
+def dibujar_exclusiones(
+    img: np.ndarray, zonas, H: np.ndarray | None = None, escala: float = 1.0
+) -> np.ndarray:
+    """Zonas de exclusión: polígono gris con rayado (acá se ignoran las detecciones).
+
+    Trabaja solo sobre el recuadro de cada zona: se dibuja en cada frame del video y
+    procesar la imagen entera lo hacía varias veces más lento.
+    """
+    out = img
+    alto, ancho = img.shape[:2]
+    for zona in zonas:
+        pts = np.round(_transformar(H, zona) * escala).astype(np.int32)
+        x0, y0, w, h = cv2.boundingRect(pts)
+        x1, y1 = max(0, x0), max(0, y0)
+        x2, y2 = min(ancho, x0 + w), min(alto, y0 + h)
+        if x2 <= x1 or y2 <= y1:
+            continue  # zona fuera del cuadro en este frame
+        if out is img:
+            out = img.copy()
+        recorte = out[y1:y2, x1:x2]
+        mascara = np.zeros(recorte.shape[:2], np.uint8)
+        cv2.fillPoly(mascara, [pts - [x1, y1]], 255)
+        rayado = recorte.copy()
+        paso = max(4, int(8 * escala))
+        rh, rw = recorte.shape[:2]
+        for d in range(-rh, rw + rh, paso):
+            cv2.line(rayado, (d, 0), (d + rh, rh), COLOR_EXCLUSION, 1, cv2.LINE_AA)
+        mezcla = cv2.addWeighted(rayado, 0.6, recorte, 0.4, 0)
+        recorte[mascara > 0] = mezcla[mascara > 0]
+        cv2.polylines(out, [pts], True, COLOR_EXCLUSION, 1, cv2.LINE_AA)
+    return out
+
+
 def dibujar_escena(
     frame: np.ndarray,
     geo: Geometria,
@@ -265,6 +305,7 @@ def dibujar_escena(
     cv2.fillPoly(capa, [poligono], COLOR_ROI)
     out = cv2.addWeighted(capa, 0.10, out, 0.90, 0)
     cv2.polylines(out, [poligono], True, COLOR_ROI, 1, cv2.LINE_AA)
+    out = dibujar_exclusiones(out, geo.exclusiones, H, escala)
     for linea in geo.lineas:
         pa, pb = np.round(_transformar(H, linea.puntos) * escala).astype(int)
         cv2.line(out, tuple(pa), tuple(pb), (0, 0, 0), max(4, int(5 * escala)), cv2.LINE_AA)
@@ -333,6 +374,10 @@ def video_anotado(
     escala: float = 1.5,
 ) -> Path:
     """mp4 de presentación con la escena anotada y los contadores en pantalla."""
+    from atlas_traffic.geometry import filtrar_exclusiones
+
+    # mismas detecciones que usó el análisis: sin los objetos fijos excluidos
+    detecciones, _ = filtrar_exclusiones(detecciones, geometria)
     cap = cv2.VideoCapture(str(video))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))

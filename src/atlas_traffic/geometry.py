@@ -19,6 +19,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pandas as pd
 import yaml
 
 from atlas_traffic.config import Geometria, Linea, load_geometria
@@ -27,6 +28,7 @@ __all__ = [
     "EditorGeometria",
     "Geometria",
     "dentro_roi",
+    "filtrar_exclusiones",
     "guardar_geometria",
     "lado",
     "load_geometria",
@@ -59,6 +61,30 @@ def dentro_roi(roi: list[tuple[int, int]], puntos: np.ndarray) -> np.ndarray:
         [cv2.pointPolygonTest(poligono, (float(x), float(y)), False) >= 0 for x, y in pts],
         dtype=bool,
     )
+
+
+def filtrar_exclusiones(
+    det: pd.DataFrame, geo: Geometria, proporcion: float = 0.5
+) -> tuple[pd.DataFrame, list[int]]:
+    """Saca los tracks de vehículos que pasan más de `proporcion` de sus detecciones en una
+    zona de exclusión. Devuelve (detecciones filtradas, ids descartados).
+
+    Se descarta el track entero y no punto a punto: así se va el objeto fijo (una valla o
+    una vidriera detectada como vehículo), pero un auto real que pasa por encima se
+    conserva. Solo se descartan vehículos: los objetos fijos siempre se confunden con
+    vehículos, y una persona esperando junto a la valla o bajo la parada es real.
+    """
+    if det.empty or not geo.exclusiones:
+        return det, []
+    xy = det[["cx_ref", "cy_ref"]].to_numpy()
+    adentro = np.zeros(len(det), dtype=bool)
+    for zona in geo.exclusiones:
+        adentro |= dentro_roi(zona, xy)
+    frac = pd.Series(adentro, index=det.index).groupby(det["track_id"]).mean()
+    clase = det.groupby("track_id")["clase"].agg(lambda s: s.mode().iat[0])
+    descartar = (frac > proporcion) & (clase == "vehiculo")
+    descartados = sorted(int(t) for t in descartar[descartar].index)
+    return det[~det["track_id"].isin(descartados)], descartados
 
 
 def guardar_geometria(geo: Geometria, ruta: Path) -> None:

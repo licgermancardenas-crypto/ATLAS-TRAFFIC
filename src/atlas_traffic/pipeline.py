@@ -35,6 +35,7 @@ from atlas_traffic.config import (
 from atlas_traffic.congestion import aplicar
 from atlas_traffic.counting import anotar_tracks, contar, resumen_conteo
 from atlas_traffic.detect import Detector
+from atlas_traffic.geometry import filtrar_exclusiones
 from atlas_traffic.metrics import calcular_intervalos, vehiculos_en_roi
 from atlas_traffic.render import homografias_por_frame
 from atlas_traffic.stabilize import (
@@ -274,6 +275,7 @@ class ResultadoAnalisis:
     conteo: pd.DataFrame | None  # aproximación x sentido x clase; None si no hay geometría
     intervalos: pd.DataFrame | None = None  # una fila por ventana; None si no hay geometría
     eventos: pd.DataFrame | None = None  # alertas de sentido contrario; None sin geometría
+    excluidos: tuple[int, ...] = ()  # tracks descartados por zonas de exclusión
 
 
 def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
@@ -287,6 +289,9 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
     if not ruta_det.exists():
         raise FileNotFoundError(f"no hay detecciones para {clip.id}: corré `run` sin reusar")
     det = pd.read_parquet(ruta_det)
+    excluidos: list[int] = []
+    if clip.geometria.exists():
+        det, excluidos = filtrar_exclusiones(det, load_geometria(clip.geometria))
     meta = leer_corrida(salida, clip, cfg, det)
     ventana = max(1, round(cfg.metricas.ventana_velocidad_s * meta["fps"]))
     tracks = tracks_desde_detecciones(det, ventana)
@@ -324,4 +329,4 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
     tracks = tracks.drop(columns=["color", "color_confianza", "thumb"], errors="ignore")
     tracks = tracks.merge(atributos, on="track_id", how="left")
     tracks.to_parquet(salida / "tracks.parquet", index=False)
-    return ResultadoAnalisis(salida, conteo, intervalos, eventos)
+    return ResultadoAnalisis(salida, conteo, intervalos, eventos, tuple(excluidos))

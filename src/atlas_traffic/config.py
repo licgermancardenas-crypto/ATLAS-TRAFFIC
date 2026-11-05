@@ -36,7 +36,7 @@ class _Modelo(BaseModel):
 
 class DeteccionCfg(_Modelo):
     detector: str = "ultralytics"  # nombre en el registro de detect.py
-    modelo: str = "yolov8n.pt"  # yolov8n para iterar, yolov8s para la corrida final
+    modelo: str = "yolov8s.pt"  # yolov8s: corrida final (brief); yolov8n para iterar rápido
     dispositivo: str = "cpu"
     confianza_min: float = Field(
         0.1, ge=0.0, le=1.0
@@ -195,11 +195,17 @@ class Geometria(_Modelo):
     resolucion: tuple[int, int]  # ancho, alto
     roi: list[Punto] = Field(min_length=3)
     lineas: list[Linea] = Field(min_length=1)
+    # Zonas de exclusión: objetos fijos de la escena que el detector confunde con
+    # vehículos (una marca pintada, el techo de una parada). Ver geometry.filtrar_exclusiones.
+    exclusiones: list[list[Punto]] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validar(self) -> Geometria:
         ancho, alto = self.resolucion
+        if any(len(z) < 3 for z in self.exclusiones):
+            raise ValueError("cada zona de exclusión necesita al menos 3 puntos")
         puntos = list(self.roi) + [p for linea in self.lineas for p in linea.puntos]
+        puntos += [p for zona in self.exclusiones for p in zona]
         fuera = [p for p in puntos if not (0 <= p[0] <= ancho and 0 <= p[1] <= alto)]
         if fuera:
             raise ValueError(f"puntos fuera de la resolución {ancho}x{alto}: {fuera}")

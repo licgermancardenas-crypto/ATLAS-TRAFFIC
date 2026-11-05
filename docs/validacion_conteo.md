@@ -21,21 +21,71 @@ verificaron mirando los frames originales.
 - Los que la cruzan después del segundo 20 tampoco.
 - Las cuñas negras del barrido son el borde de la imagen cuando la cámara se corre, no vehículos.
 
-## Resultado — muestra_2, primeros 20 s
+## Resultado — muestra_2 (día, tránsito fluido), primeros 20 s
 
-| Línea | Manual | Automático | Diferencia | Falsos positivos |
+| Línea | Manual | `yolov8n` | `yolov8s` (actual) | Falsos positivos |
 |---|---|---|---|---|
-| av_cordoba_frente | 22 | 20 | −9.1 % ✓ | 0 |
-| av_cordoba_fondo | 18 | 17 | −5.6 % ✓ | 0 |
-| rodriguez_pena_der | 0 | 0 | ✓ | 0 |
+| av_cordoba_frente | 22 | 20 (−9.1 %) | **21 (−4.5 %) ✓** | 0 |
+| av_cordoba_fondo | 18 | 17 (−5.6 %) | **17 (−5.6 %) ✓** | 0 |
+| rodriguez_pena_der | 0 | 0 | **0 ✓** | 0 |
 
 **Cruces perdidos:**
-- **Una moto**, en ambas líneas: la detección de motos con `yolov8n` a 464 px es débil.
-- **Un auto del carril izquierdo**, en el borde inferior del cuadro (línea del frente).
-  Se detectó recién cuando ya había cruzado.
+- **Una moto**, en ambas líneas, con los dos modelos.
+- **Un auto del carril izquierdo**, en el borde inferior del cuadro. `yolov8n` lo perdía y
+  `yolov8s` lo recupera.
 
 No hubo ningún cruce falso, y todos los cruces de la avenida salieron en el sentido de
 circulación (Córdoba es mano única).
+
+## Resultado — muestra_3 (día, cola de autos), primeros 20 s, `yolov8s`
+
+| Línea | Manual | Automático | Diferencia | Falsos positivos |
+|---|---|---|---|---|
+| av_cordoba_frente | ~18 | 17 | ~−6 % ✓ | 0 |
+| av_cordoba_fondo | 10 (5 autos + 5 motos) | 5 | **−50 % ✗** (autos: 5/5) | 0 |
+| rodriguez_pena_izq | 1 | 1 | ✓ | 0 |
+| rodriguez_pena_der | ¿0? | 0 | dudoso | 0 |
+
+- **Frente:** el conteo manual es aproximado. Los autos de la cola avanzan muy lento y en
+  el barrido aparecen como manchas altas.
+- **Fondo:** los 5 autos (taxis) coinciden uno a uno. Los 5 que faltan son **motos**,
+  confirmadas mirando el video: la línea queda lejos de la cámara y ahí miden muy pocos
+  píxeles.
+- **Rodríguez Peña izquierda:** el único cruce es un colectivo que está parado sobre la
+  línea y avanza recién a los ~16 s.
+- **Rodríguez Peña derecha:** hay una banda oscura instantánea a los 14 s que parece un
+  salto de la imagen, no un vehículo.
+
+## Resultado — muestra_1 (noche, lluvia), primeros 20 s, `yolov8s`
+
+| Línea | Manual | Automático | Diferencia | Falsos positivos |
+|---|---|---|---|---|
+| av_cordoba_frente | ~14 | 9 | **~−36 % ✗** | 0 |
+| av_cordoba_fondo | ~23 | 18 | **~−22 % ✗** | 0 |
+| rodriguez_pena_izq | 2 | 1 | ✗ (n muy chico) | 0 |
+| rodriguez_pena_der | — | 0 | no medible | — |
+
+- **Precisión intacta:** todos los cruces automáticos corresponden a vehículos reales.
+- **Lo que se pierde:**
+  - Autos oscuros de noche.
+  - El tramo derecho de la línea del frente, y toda la línea de Rodríguez Peña derecha,
+    que **quedan fuera del cuadro** desde el segundo 2 o 3, porque la cámara se corre
+    hacia la izquierda. Con ese paneo, ninguna línea cubre todo el ancho de la avenida
+    durante el clip completo.
+- **El conteo manual también es aproximado:** con la calle mojada, las luces traseras dejan
+  reflejos rojos que se confunden con vehículos.
+- **Es la limitación nocturna que anticipa el brief.** Va al README, no al demo.
+
+## Resumen
+
+| Clip | ¿Cumple ±10 %? | Comentario |
+|---|---|---|
+| muestra_2 (día, fluido) | ✅ todas las líneas | El caso de referencia del brief. |
+| muestra_3 (día, cola) | ⚠️ frente sí, fondo no | Los autos se cuentan bien; las motos lejanas, no. |
+| muestra_1 (noche) | ❌ | Detección nocturna y cámara que saca las líneas del cuadro. |
+
+En los tres clips **no hubo ni un solo cruce falso**: el sistema se equivoca por omisión,
+nunca inventando vehículos.
 
 ## Correcciones que salieron de la validación
 
@@ -56,7 +106,7 @@ el de su primer punto. Antes, esos vehículos nunca contaban.
 
 ## Pendiente
 
-- Validar muestra_1 (noche) y muestra_3 (cola de autos) con el mismo método. Sus líneas
-  del frente están en una posición parecida a la que falló en muestra_2.
-- Mejorar la detección de motos: probar `yolov8s`, más resolución de inferencia o, mejor,
-  video original sin la compresión de WhatsApp.
+- **Motos:** se pierden incluso con `yolov8s`. Probar más resolución de inferencia, o
+  mejor, video original sin la compresión de WhatsApp.
+- **Noche y paneo de cámara:** se resuelven grabando con el teléfono fijo, no con
+  software.

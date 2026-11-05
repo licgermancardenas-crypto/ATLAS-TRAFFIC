@@ -33,3 +33,8 @@ lineas:
   - [275, 430]
   sentido_positivo: entrante
   sentido_permitido: entrante
+exclusiones:
+- - [200, 407]
+  - [233, 407]
+  - [233, 438]
+  - [200, 438]

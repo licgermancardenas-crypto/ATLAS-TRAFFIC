@@ -27,3 +27,4 @@ outputs/color_cache.pkl
 Thumbs.db
 .vscode/
 .idea/
+outputs_yolov8n/

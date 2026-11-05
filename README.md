@@ -98,6 +98,7 @@ atlas-traffic dashboard
 | `atlas-traffic run --clip <id> [--render] [--debug-video]` | procesa un clip |
 | `atlas-traffic run --clip <id> --reusar-detecciones` | recuenta en segundos, sin volver a correr YOLO (útil al corregir la geometría) |
 | `atlas-traffic calibrate` | recalcula los umbrales de congestión |
+| `... --modelo yolov8n.pt` | modelo chico para iterar rápido (por defecto se usa `yolov8s`, el de la corrida final) |
 
 ## Cómo funciona
 
@@ -120,7 +121,7 @@ video ─► Detector (protocolo) ─► tracks con ID ─► estabilización (h
 |---|---|
 | `detect.py` | Protocolo `Detector` + `UltralyticsDetector` + `FakeDetector` para tests. El vocabulario COCO no sale del adaptador. |
 | `stabilize.py` | Homografía por frame (ORB + RANSAC, sin las cajas de vehículos), suavizada en el tiempo. |
-| `geometry.py` | Zona de análisis, líneas y convención de lado; editor interactivo. |
+| `geometry.py` | Zona de análisis, líneas, zonas de exclusión y convención de lado; editor interactivo. |
 | `counting.py` | Cruce con banda muerta, corte real del segmento, conteo único por línea y sentido. |
 | `metrics.py` | Flujo, densidad y velocidad por ventana; velocidad por desplazamiento en ventana (robusta al temblor). |
 | `attributes.py` | Color por votación y recortes. |
@@ -141,7 +142,8 @@ video ─► Detector (protocolo) ─► tracks con ID ─► estabilización (h
 **Configuración:**
 - `configs/default.yaml`: parámetros, todos validados con Pydantic.
 - `configs/clips.yaml`: registro de clips.
-- `configs/geometria/*.yaml`: una geometría por encuadre.
+- `configs/geometria/*.yaml`: una geometría por encuadre (zona de análisis, líneas y
+  zonas de exclusión).
 - `configs/calibracion.yaml`: umbrales de congestión, versionados para auditarlos.
 
 ## Resultados y validación
@@ -151,7 +153,7 @@ cumplió del todo.
 
 | Fase | Criterio | Resultado | Detalle |
 |---|---|---|---|
-| Conteo | ±10 % por línea contra conteo manual | ✅ −9.1 %, −5.6 % y 0 %; cero cruces falsos | [validacion_conteo.md](docs/validacion_conteo.md) |
+| Conteo | ±10 % por línea contra conteo manual | ✅ muestra_2: −4.5 %, −5.6 % y 0 %. ⚠️ muestra_3: frente ✅, fondo ✗ (motos). ❌ noche. Cero cruces falsos en los tres clips | [validacion_conteo.md](docs/validacion_conteo.md) |
 | Color | saturados > 85 %, acromáticos > 65 % | ⚠️ 82 % y 65 % (muestra de 28) | [validacion_color.md](docs/validacion_color.md) |
 | Sentido contrario | cero falsos positivos | ✅ 0 eventos en 3 clips; la prueba controlada dispara en 81 de 84 cruces | [validacion_alertas.md](docs/validacion_alertas.md) |
 | Congestión | congestionado = HIGH, liviano = LOW, sin ajuste manual | ✅ con la salvedad del supuesto de flujo libre | [validacion_congestion.md](docs/validacion_congestion.md) |
@@ -172,11 +174,16 @@ cumplió del todo.
   compresión. Fueron filmados con la cámara en mano y cada uno tiene un encuadre distinto.
   El sistema lo compensa, pero los resultados van a mejorar con video original y teléfono
   fijo en la baranda (brief §8).
-- **Peatones:** a esta resolución miden unos 10 px y casi no se detectan; el flujo
-  peatonal da 0 y no es real. Tampoco se detectan bien las motos, y se pierde algún auto en
-  el borde inferior del cuadro.
+- **Peatones:** `yolov8s` detecta bastantes más que `yolov8n` (unos 20 por clip), pero el
+  flujo peatonal da 0. Las líneas de conteo atraviesan los carriles de autos, y los peatones
+  caminan por las veredas o las sendas peatonales, en paralelo a esas líneas. Para
+  contarlos hay que marcar líneas propias sobre las sendas.
+- **Motos:** se pierden, sobre todo lejos de la cámara. En la línea del fondo de
+  muestra_3, los autos dan 5 de 5 pero las motos 0 de 5.
 - **Noche:**
-  - La detección degrada (se pierden motos y autos oscuros).
+  - La detección degrada: el conteo da −36 % y −22 % en las líneas de Córdoba, siempre por
+    omisión, sin cruces falsos.
+  - La cámara se corre y saca del cuadro parte de las líneas.
   - El color no es confiable: la luz naranja del alumbrado hace que autos blancos salgan
     "amarillo" (solo ~4 de 12 "amarillos" nocturnos son taxis).
   - El clip nocturno queda acá y no en el demo principal.
@@ -186,8 +193,13 @@ cumplió del todo.
   momento de flujo libre. Con un clip por encuadre no se cumple: la cola de muestra_3 hace
   que su "flujo libre" sea lento, y la clasificación termina dependiendo sobre todo de la
   densidad. Con 5 intervalos, además, los umbrales son poco estables.
-- **Falsos positivos estáticos:** el techo de una parada de colectivos se detecta como
-  vehículo y puede sumar uno a la densidad.
+- **Objetos fijos confundidos con vehículos:** una valla metálica, una vidriera iluminada
+  y el techo de una parada.
+  - Se resuelven con **zonas de exclusión** marcadas en la geometría de cada encuadre,
+    que descartan solo tracks de vehículos (no peatones).
+  - Se verificó que no le sacan ningún cruce al conteo.
+  - No se usa un filtro automático de "objetos quietos", porque se llevaría puestos a los
+    autos detenidos en la cola, que son justo los que importan para la congestión.
 - **Datos provisorios:** la fecha y la hora de los clips son estimadas, hasta tener las
   reales.
 

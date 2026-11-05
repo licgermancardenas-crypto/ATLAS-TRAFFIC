@@ -38,3 +38,8 @@ lineas:
   - [80, 532]
   sentido_positivo: saliente
   sentido_permitido: saliente
+exclusiones:
+- - [95, 550]
+  - [243, 550]
+  - [243, 701]
+  - [95, 701]

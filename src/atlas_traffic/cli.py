@@ -102,6 +102,8 @@ def _procesar_clip(
                 "velocidad_media_px"]  # fmt: skip
         typer.echo(f"\nIntervalos de {cfg.metricas.intervalo_s} s:")
         typer.echo(res.intervalos[cols].round(2).to_string(index=False))
+    if res.excluidos:
+        typer.echo(f"Tracks descartados por zonas de exclusión: {list(res.excluidos)}")
     if res.eventos is not None and (detallado or not res.eventos.empty):
         typer.echo(f"Eventos de sentido contrario: {len(res.eventos)}")
         if detallado and not res.eventos.empty:
@@ -262,7 +264,8 @@ def geometry(
                         fg=typer.colors.YELLOW)  # fmt: skip
         salida = cfg.rutas.outputs / "runs" / c.id / "geometria.png"
         salida.parent.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(str(salida), dibujar_geometria(frame, geo.roi, geo.lineas))
+        cv2.imwrite(str(salida), dibujar_geometria(frame, geo.roi, geo.lineas,
+                                                   exclusiones=geo.exclusiones))  # fmt: skip
         typer.echo(f"{len(geo.lineas)} líneas, ROI de {len(geo.roi)} vértices -> {salida}")
         return
 

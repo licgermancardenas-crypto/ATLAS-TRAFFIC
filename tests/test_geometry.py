@@ -133,3 +133,40 @@ def test_render_con_homografia_desplaza_la_geometria():
     out = dibujar_geometria(np.zeros((1080, 1920, 3), np.uint8), [], geo.lineas[:1], H=H)
     assert out[300, 1240].any()  # el extremo B (1200) quedó en 1250
     assert not out[300, 620].any()  # antes del nuevo extremo A (650) no hay línea
+
+
+def test_exclusiones_descartan_objeto_fijo_y_conservan_auto_que_pasa():
+    import pandas as pd
+
+    from atlas_traffic.geometry import filtrar_exclusiones
+
+    zona = [(100, 100), (140, 100), (140, 140), (100, 140)]
+    geo = load_geometria(FIXTURES / "encuadre_test.yaml").model_copy(update={"exclusiones": [zona]})
+    filas = [(1, f, 120.0, 120.0, "vehiculo") for f in range(20)]  # valla: siempre adentro
+    filas += [(2, f, 60.0 + 10 * f, 120.0, "vehiculo") for f in range(20)]  # auto que la cruza
+    filas += [(3, f, 118.0, 122.0, "peaton") for f in range(20)]  # persona esperando ahí
+    det = pd.DataFrame(filas, columns=["track_id", "frame", "cx_ref", "cy_ref", "clase"])
+    filtradas, descartados = filtrar_exclusiones(det, geo)
+    assert descartados == [1]
+    assert set(filtradas.track_id) == {2, 3}
+    assert len(filtradas[filtradas.track_id == 2]) == 20  # el auto entero, sin huecos
+    sin_zonas, nada = filtrar_exclusiones(det, load_geometria(FIXTURES / "encuadre_test.yaml"))
+    assert nada == [] and len(sin_zonas) == len(det)
+
+
+def test_exclusiones_se_validan():
+    base = load_geometria(FIXTURES / "encuadre_test.yaml").model_dump()
+    with pytest.raises(ValueError, match="3 puntos"):
+        type(load_geometria(FIXTURES / "encuadre_test.yaml")).model_validate(
+            {**base, "exclusiones": [[(1, 1), (2, 2)]]})  # fmt: skip
+    with pytest.raises(ValueError, match="fuera"):
+        type(load_geometria(FIXTURES / "encuadre_test.yaml")).model_validate(
+            {**base, "exclusiones": [[(1, 1), (5000, 1), (1, 5)]]})  # fmt: skip
+
+
+def test_render_dibuja_exclusiones():
+    from atlas_traffic.render import dibujar_exclusiones
+
+    img = np.zeros((100, 100, 3), np.uint8)
+    out = dibujar_exclusiones(img, [[(10, 10), (60, 10), (60, 60), (10, 60)]])
+    assert out[30:40, 30:40].any() and not out[80:90, 80:90].any()

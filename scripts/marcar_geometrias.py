@@ -85,6 +85,14 @@ PERMITIDO = {
     "rodriguez_pena_izq": "saliente",
 }
 
+# Zonas de exclusión: objetos fijos de la escena que el detector toma por vehículos.
+# Cajas medidas con las detecciones de yolov8s (centro +/- 1.15 x semiancho/semialto).
+EXCLUSIONES: dict[str, list[list[tuple[int, int]]]] = {
+    "encuadre_m1": [[(268, 335), (357, 335), (357, 411), (268, 411)]],  # vidriera iluminada
+    "encuadre_m2": [[(200, 407), (233, 407), (233, 438), (200, 438)]],  # valla metálica blanca
+    "encuadre_m3": [[(95, 550), (243, 550), (243, 701), (95, 701)]],  # techo de la parada
+}
+
 for encuadre, spec in ENCUADRES.items():
     lineas = []
     for id_, puntos in spec["lineas"].items():
@@ -92,6 +100,7 @@ for encuadre, spec in ENCUADRES.items():
         sentido = "entrante" if lado(provisoria, spec["centro"]) > 0 else "saliente"
         lineas.append(Linea(id=id_, puntos=puntos, sentido_positivo=sentido,
                             sentido_permitido=PERMITIDO.get(id_, "ambos")))  # fmt: skip
-    geo = Geometria(encuadre=encuadre, resolucion=(464, 832), roi=spec["roi"], lineas=lineas)
+    geo = Geometria(encuadre=encuadre, resolucion=(464, 832), roi=spec["roi"], lineas=lineas,
+                    exclusiones=EXCLUSIONES.get(encuadre, []))  # fmt: skip
     guardar_geometria(geo, RAIZ / "configs" / "geometria" / f"{encuadre}.yaml")
     print(encuadre, [(ln.id, ln.sentido_positivo) for ln in lineas])

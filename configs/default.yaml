@@ -2,7 +2,7 @@
 
 deteccion:
   detector: ultralytics      # nombre en el registro de detect.py (ultralytics | fake)
-  modelo: yolov8n.pt         # yolov8n para iterar, yolov8s para la corrida final
+  modelo: yolov8s.pt         # corrida final (brief); --modelo yolov8n.pt para iterar rápido
   dispositivo: cpu
   confianza_min: 0.1        # bajo a propósito: ByteTrack usa las detecciones débiles para re-asociar
   iou: 0.5
