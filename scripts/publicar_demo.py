@@ -1,4 +1,4 @@
-"""Copia a demo/outputs/ los datos que usa el dashboard, para publicarlo en la nube.
+"""Copia a demo/outputs/ los datos y videos que usa el dashboard, para publicarlo en la nube.
 
 outputs/ está fuera de git (videos derivados, detecciones crudas). El dashboard solo
 necesita los consolidados, los conteos por clip y los recortes, que pesan poco y no
@@ -33,8 +33,9 @@ def main() -> None:
             continue
         dest = DESTINO / "runs" / corrida.name
         dest.mkdir(parents=True)
-        if (corrida / "conteo.csv").exists():
-            shutil.copy2(corrida / "conteo.csv", dest / "conteo.csv")
+        for archivo in ("conteo.csv", "video_web.mp4"):
+            if (corrida / archivo).exists():
+                shutil.copy2(corrida / archivo, dest / archivo)
         for carpeta in ("thumbs", "eventos"):
             if (corrida / carpeta).is_dir():
                 shutil.copytree(corrida / carpeta, dest / carpeta)

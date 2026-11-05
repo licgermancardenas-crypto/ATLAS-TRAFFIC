@@ -140,7 +140,7 @@ def _render_presentacion(c, cfg, salida: Path) -> None:
     import pandas as pd
 
     from atlas_traffic.config import load_geometria
-    from atlas_traffic.render import gif_desde_video, video_anotado
+    from atlas_traffic.render import exportar_video_web, gif_desde_video, video_anotado
 
     if not c.geometria.exists():
         typer.secho("Sin geometría: no hay video anotado.", fg=typer.colors.YELLOW)
@@ -157,6 +157,12 @@ def _render_presentacion(c, cfg, salida: Path) -> None:
         eventos=leer("eventos.parquet"), escala=cfg.render.escala,
     )  # fmt: skip
     typer.echo(f"Video anotado -> {mp4}")
+    web = exportar_video_web(mp4, salida / "video_web.mp4")
+    if web is None:
+        typer.secho("Sin ffmpeg: no se genera video_web.mp4 (el que se ve en el navegador).",
+                    fg=typer.colors.YELLOW)  # fmt: skip
+    else:
+        typer.echo(f"Video para el navegador -> {web} ({web.stat().st_size / 1e6:.1f} MB)")
     r = cfg.render
     gif = gif_desde_video(mp4, salida / "muestra.gif", r.gif_inicio_s, r.gif_duracion_s,
                           r.gif_ancho, r.gif_fps, r.gif_colores)  # fmt: skip

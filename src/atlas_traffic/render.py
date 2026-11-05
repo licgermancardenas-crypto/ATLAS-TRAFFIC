@@ -473,3 +473,22 @@ def gif_desde_video(
         optimize=True,
     )  # fmt: skip
     return salida
+
+
+def exportar_video_web(origen: Path, destino: Path, ancho: int = 540, crf: int = 28) -> Path | None:
+    """Versión del video anotado que se reproduce en el navegador (H.264, liviana).
+
+    OpenCV escribe MPEG-4 Part 2 (mp4v), que los navegadores no reproducen. Necesita
+    ffmpeg en el sistema; si no está, devuelve None y el video web no se genera.
+    """
+    import shutil
+    import subprocess
+
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        return None
+    cmd = [ffmpeg, "-v", "error", "-y", "-i", str(origen), "-vf", f"scale={ancho}:-2",
+           "-c:v", "libx264", "-preset", "medium", "-crf", str(crf), "-pix_fmt", "yuv420p",
+           "-movflags", "+faststart", "-an", str(destino)]  # fmt: skip
+    subprocess.run(cmd, check=True)
+    return destino

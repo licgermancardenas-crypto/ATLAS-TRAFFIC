@@ -151,6 +151,48 @@ def panorama(datos) -> None:
     st.dataframe(tabla, hide_index=True, width="stretch")
 
 
+LEYENDA_VIDEO = """
+**Qué se ve en pantalla**
+
+- **Cajas naranjas:** vehículos detectados, con su número de seguimiento. **Azules:** peatones.
+- **Cajas verdes:** vehículos que ya cruzaron una línea y fueron contados.
+- **Líneas amarillas:** líneas de conteo de cada aproximación. La **flecha blanca** marca el
+  sentido de circulación permitido.
+- **Zona verde:** zona de análisis. **Zonas grises rayadas:** objetos fijos que el detector
+  confunde con vehículos (una valla, una vidriera) y se ignoran.
+- **Panel de arriba:** cruces acumulados por aproximación y nivel de congestión del
+  intervalo (LOW, MODERATE o HIGH) con la densidad.
+- **Borde rojo y "SENTIDO CONTRARIO":** alerta de circulación a contramano.
+
+La cámara se mueve porque los clips se filmaron con el teléfono en la mano: el sistema
+compensa ese movimiento y por eso las líneas acompañan a la calle.
+"""
+
+
+def video(datos) -> None:
+    videos = {r.parent.name: r for r in sorted((datos.outputs / "runs").glob("*/video_web.mp4"))}
+    if not videos:
+        st.info("No hay videos procesados: corré `atlas-traffic batch --render`.")
+        return
+    st.caption("Video ya procesado (no es una transmisión en vivo): así ve el sistema la "
+               "esquina mientras cuenta.")  # fmt: skip
+    clip = st.selectbox("Clip", list(videos))
+    reproductor, leyenda = st.columns([2, 3])
+    with reproductor:
+        st.video(str(videos[clip]))
+    with leyenda:
+        s = datos.summary[datos.summary["clip_id"] == clip]
+        if not s.empty:
+            fila = s.iloc[0]
+            luz = f" · {fila['luz']}" if "luz" in s else ""
+            niveles = ", ".join(s["congestion"].dropna().unique())
+            fecha = pd.Timestamp(fila["fecha"])
+            st.markdown(f"**{clip}** · {fecha:%d/%m/%Y} {fila['hora_inicio']}{luz} · "
+                        f"{fila['clima']}")  # fmt: skip
+            st.markdown(f"Congestión: **{niveles}**")
+        st.markdown(LEYENDA_VIDEO)
+
+
 def eventos(datos) -> None:
     e = datos.eventos
     st.caption("Circulación en sentido contrario. Cada evento se verifica mirando el recorte.")
@@ -279,6 +321,7 @@ def main() -> None:
     filtro = filtros_consulta(datos)
     vistas = {
         "panorama": ("Panorama", lambda: panorama(datos)),
+        "video": ("Video", lambda: video(datos)),
         "eventos": ("Eventos", lambda: eventos(datos)),
         "consulta": ("Consulta", lambda: consulta(datos, filtro)),
     }

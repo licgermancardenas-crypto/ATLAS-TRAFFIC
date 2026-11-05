@@ -45,13 +45,17 @@ homografía, y el conteo trabaja en esas coordenadas fijas.
 
 - **Panorama:** flujo, densidad y velocidad por intervalo; hábil contra fin de semana;
   congestión por franja horaria; tabla de clips.
+- **Video:** el video procesado de cada clip, con las cajas, las líneas, los contadores y
+  el nivel de congestión en pantalla, y una leyenda que explica qué es cada cosa. Es una
+  grabación ya procesada, no una transmisión en vivo.
 - **Eventos:** cada alerta de sentido contrario con su recorte al lado.
 - **Consulta:** filtros por clip, fechas, ventana dentro del video, tipo, color, movimiento
   y confianza de color. Muestra el conteo de vehículos únicos, la grilla de recortes y la
   descarga a CSV. Cualquier consulta se comparte por URL, por ejemplo
   `?vista=consulta&color=blanco&desde=10&hasta=30`.
 
-**Online:** el dashboard se publica en Streamlit Community Cloud desde este repo
+**Online:** https://atlas-traffic.streamlit.app — el dashboard se publica en Streamlit
+Community Cloud desde este repo
 (`dashboard/app.py`, dependencias en `dashboard/requirements.txt`). Muestra los datos de
 `demo/outputs/`, que se actualizan con `python scripts/publicar_demo.py` después de
 `atlas-traffic batch`. Al subir a `main`, la app se actualiza sola.
