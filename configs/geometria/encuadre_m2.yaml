@@ -1,17 +1,32 @@
-# BORRADOR para probar el render (marcado a ojo, no con el editor).
-# Reemplazar con: atlas-traffic geometry --clip muestra_2
+# Geometría del encuadre encuadre_m2. Generado con `atlas-traffic geometry`.
 # Coordenadas en el frame de referencia de la estabilización.
 # Cruce positivo = en el sentido de la flecha que dibuja el render.
 encuadre: encuadre_m2
 resolucion: [464, 832]
-roi: [[0, 390], [300, 368], [464, 470], [464, 810], [330, 810], [130, 570], [0, 565]]
+roi:
+- [0, 330]
+- [120, 335]
+- [250, 365]
+- [330, 375]
+- [300, 450]
+- [464, 520]
+- [464, 810]
+- [330, 810]
+- [140, 580]
+- [0, 565]
 lineas:
-- id: av_frente
-  puntos: [[195, 665], [420, 600]]
+- id: av_cordoba_frente
+  puntos:
+  - [200, 670]
+  - [430, 545]
   sentido_positivo: saliente
-- id: calle_izq
-  puntos: [[40, 420], [40, 555]]
-  sentido_positivo: saliente
-- id: calle_fondo
-  puntos: [[210, 385], [300, 365]]
+- id: av_cordoba_fondo
+  puntos:
+  - [25, 410]
+  - [65, 335]
+  sentido_positivo: entrante
+- id: rodriguez_pena_der
+  puntos:
+  - [215, 395]
+  - [275, 430]
   sentido_positivo: entrante

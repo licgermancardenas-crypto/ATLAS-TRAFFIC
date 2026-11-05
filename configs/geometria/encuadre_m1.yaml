@@ -1,0 +1,36 @@
+# Geometría del encuadre encuadre_m1. Generado con `atlas-traffic geometry`.
+# Coordenadas en el frame de referencia de la estabilización.
+# Cruce positivo = en el sentido de la flecha que dibuja el render.
+encuadre: encuadre_m1
+resolucion: [464, 832]
+roi:
+- [55, 380]
+- [300, 355]
+- [464, 370]
+- [464, 820]
+- [330, 820]
+- [240, 590]
+- [120, 525]
+- [0, 525]
+- [0, 420]
+lineas:
+- id: av_cordoba_frente
+  puntos:
+  - [250, 600]
+  - [464, 552]
+  sentido_positivo: saliente
+- id: av_cordoba_fondo
+  puntos:
+  - [62, 392]
+  - [265, 365]
+  sentido_positivo: entrante
+- id: rodriguez_pena_der
+  puntos:
+  - [445, 388]
+  - [445, 475]
+  sentido_positivo: entrante
+- id: rodriguez_pena_izq
+  puntos:
+  - [60, 428]
+  - [60, 515]
+  sentido_positivo: saliente
