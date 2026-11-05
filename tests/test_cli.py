@@ -28,7 +28,7 @@ def test_python_m_help_lista_subcomandos():
 def test_subcomandos_validan_config_y_salen_ok(monkeypatch):
     monkeypatch.chdir(RAIZ)
     runner = CliRunner()
-    for args in (["dashboard"],):  # batch y calibrate trabajan de verdad: tienen sus tests
+    for args in (["dashboard", "--probar"],):  # batch y calibrate tienen sus propios tests
         res = runner.invoke(app, args)
         assert res.exit_code == 0, res.output
 

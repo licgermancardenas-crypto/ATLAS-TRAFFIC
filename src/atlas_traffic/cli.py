@@ -1,7 +1,6 @@
 """Entrypoint de línea de comandos.
 
 Subcomandos: run, batch, geometry, calibrate, dashboard.
-En la Fase 0 son esqueletos: validan la configuración y anuncian en qué fase se implementan.
 """
 
 from __future__ import annotations
@@ -20,10 +19,6 @@ app = typer.Typer(
 )
 
 ConfigOpt = typer.Option(DEFAULT_CONFIG_PATH, "--config", "-c", help="Config general (YAML).")
-
-
-def _pendiente(fase: str) -> None:
-    typer.secho(f"Todavía no implementado — llega en la {fase}.", fg=typer.colors.YELLOW)
 
 
 @app.command()
@@ -312,10 +307,26 @@ def calibrate(config: Path = ConfigOpt) -> None:
 
 
 @app.command()
-def dashboard(config: Path = ConfigOpt) -> None:
-    """Levanta el dashboard Streamlit."""
-    load_app_config(config)
-    _pendiente("Fase 7")
+def dashboard(
+    config: Path = ConfigOpt,
+    probar: bool = typer.Option(False, "--probar", help="Validar sin levantar el servidor."),
+) -> None:
+    """Levanta el dashboard Streamlit (Panorama, Eventos y Consulta)."""
+    import subprocess
+    import sys
+
+    cfg = load_app_config(config)
+    app_py = Path(__file__).resolve().parents[2] / "dashboard" / "app.py"
+    if not app_py.exists():
+        raise typer.BadParameter(f"no se encontró el dashboard en {app_py}")
+    if not (cfg.rutas.outputs / "summary.parquet").exists():
+        typer.secho("Ojo: no hay outputs/summary.parquet. Corré `atlas-traffic batch` primero.",
+                    fg=typer.colors.YELLOW)  # fmt: skip
+    if probar:
+        typer.echo(f"Dashboard en {app_py} (config {config}); no se levanta (--probar).")
+        return
+    cmd = [sys.executable, "-m", "streamlit", "run", str(app_py), "--", "--config", str(config)]
+    raise typer.Exit(subprocess.call(cmd))
 
 
 if __name__ == "__main__":

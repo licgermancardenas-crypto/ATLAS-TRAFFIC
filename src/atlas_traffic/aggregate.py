@@ -6,6 +6,8 @@
     outputs/summary.parquet       intervalos + metadata (lo que consume el Panorama)
     outputs/tracks_todos.parquet  un registro por objeto, con hora real de cruce
     outputs/eventos_todos.parquet eventos de todos los clips
+    outputs/cruces_todos.parquet  un registro por cruce de línea, con color, recorte y
+                                  hora real del vehículo (base de la consulta)
   Las rutas de recortes (thumb) quedan relativas a outputs/.
 """
 
@@ -91,6 +93,7 @@ class ResultadoConsolidacion:
     summary: pd.DataFrame
     tracks: pd.DataFrame
     eventos: pd.DataFrame
+    cruces: pd.DataFrame
     rutas: dict[str, Path]
 
 
@@ -102,7 +105,7 @@ def _prefijar_thumbs(df: pd.DataFrame, clip: Clip) -> pd.DataFrame:
 
 
 def consolidar(cfg: AppConfig, clips: list[Clip]) -> ResultadoConsolidacion:
-    summary, tracks, eventos = [], [], []
+    summary, tracks, eventos, cruces = [], [], [], []
     for c in clips:
         d = _dir_corrida(cfg, c)
         if not (d / "intervalos.parquet").exists():
@@ -119,6 +122,16 @@ def consolidar(cfg: AppConfig, clips: list[Clip]) -> ResultadoConsolidacion:
             if "ts_cruce" in t.columns:
                 t["hora_cruce"] = inicio + pd.to_timedelta(t["ts_cruce"], unit="s")
             tracks.append(t)
+            if (d / "cruces.parquet").exists():
+                cr = pd.read_parquet(d / "cruces.parquet")
+                atributos = (
+                    t[["track_id", "color", "color_confianza", "thumb"]]
+                    if "color" in t
+                    else t[["track_id"]]
+                )
+                cr = cr.merge(atributos, on="track_id", how="left").assign(clip_id=c.id, **meta)
+                cr["hora"] = inicio + pd.to_timedelta(cr["ts_cruce"], unit="s")
+                cruces.append(cr)
         if (d / "eventos.parquet").exists():
             e = _prefijar_thumbs(pd.read_parquet(d / "eventos.parquet"), c).assign(**meta)
             e["hora"] = inicio + pd.to_timedelta(e["ts"], unit="s")
@@ -130,13 +143,16 @@ def consolidar(cfg: AppConfig, clips: list[Clip]) -> ResultadoConsolidacion:
         summary=pd.concat(summary, ignore_index=True),
         tracks=pd.concat(tracks, ignore_index=True) if tracks else pd.DataFrame(),
         eventos=pd.concat(eventos, ignore_index=True) if eventos else pd.DataFrame(),
+        cruces=pd.concat(cruces, ignore_index=True) if cruces else pd.DataFrame(),
         rutas={
             "summary": salida / "summary.parquet",
             "tracks": salida / "tracks_todos.parquet",
             "eventos": salida / "eventos_todos.parquet",
+            "cruces": salida / "cruces_todos.parquet",
         },
     )
     res.summary.to_parquet(res.rutas["summary"], index=False)
     res.tracks.to_parquet(res.rutas["tracks"], index=False)
     res.eventos.to_parquet(res.rutas["eventos"], index=False)
+    res.cruces.to_parquet(res.rutas["cruces"], index=False)
     return res
