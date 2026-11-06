@@ -42,3 +42,11 @@ jobs:
         run: docker build -t atlas-traffic:ci .
       - name: El CLI responde dentro de la imagen
         run: docker run --rm atlas-traffic:ci --help
+      - name: El modelo de la esquina está en la imagen y carga
+        run: >-
+          docker run --rm --entrypoint python atlas-traffic:ci -c
+          "from atlas_traffic.config import load_app_config;
+          from atlas_traffic.detect import crear_detector;
+          c = load_app_config();
+          d = crear_detector(c.deteccion.detector, **c.deteccion.kwargs_motor());
+          print('modelo ok:', c.deteccion.modelo, d._model.names)"

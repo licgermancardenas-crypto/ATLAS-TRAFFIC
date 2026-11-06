@@ -33,6 +33,7 @@ RUN pip install --index-url https://download.pytorch.org/whl/cpu torch torchvisi
 
 COPY configs ./configs
 COPY dashboard ./dashboard
+COPY modelos ./modelos
 RUN mkdir -p data/raw outputs
 
 EXPOSE 8501
