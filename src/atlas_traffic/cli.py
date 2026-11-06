@@ -158,6 +158,7 @@ def _render_presentacion(c, cfg, salida: Path) -> None:
         salida / "anotado.mp4", titulo=c.id, estabilizacion=leer("estabilizacion.parquet"),
         cruces=leer("cruces.parquet"), intervalos=leer("intervalos.parquet"),
         eventos=leer("eventos.parquet"), escala=cfg.render.escala,
+        ancho_max=cfg.render.ancho_max,
     )  # fmt: skip
     typer.echo(f"Video anotado -> {mp4}")
     web = exportar_video_web(mp4, salida / "video_web.mp4")
@@ -265,7 +266,7 @@ def geometry(
 
     cfg = load_app_config(config)
     c = get_clip(load_clips(cfg.rutas.clips), clip)
-    ref = cfg.estabilizacion.frame_referencia if cfg.estabilizacion.activa else 0
+    ref = c.estabilizacion(cfg.estabilizacion).frame_referencia if cfg.estabilizacion.activa else 0
     frame = leer_frame(c.archivo, ref)
     alto, ancho = frame.shape[:2]
 

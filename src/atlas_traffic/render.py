@@ -231,7 +231,9 @@ COLOR_EVENTO = (0, 0, 255)
 COLOR_LINEA_PRESENTACION = (0, 220, 255)
 
 
-def _flecha_permitida(img, linea: Linea, H: np.ndarray | None, escala: float) -> None:
+def _flecha_permitida(
+    img, linea: Linea, H: np.ndarray | None, escala: float, deco: float | None = None
+) -> None:
     """Flecha perpendicular a la línea, hacia donde circula el tránsito permitido."""
     if linea.sentido_permitido == "ambos":
         return
@@ -248,7 +250,7 @@ def _flecha_permitida(img, linea: Linea, H: np.ndarray | None, escala: float) ->
         tuple(np.round(p0).astype(int)),
         tuple(np.round(p1).astype(int)),
         (255, 255, 255),
-        max(2, int(2 * escala)),
+        max(2, int(2 * (deco or escala))),
         cv2.LINE_AA,
         tipLength=0.4,
     )
@@ -297,8 +299,14 @@ def dibujar_escena(
     dets: pd.DataFrame,
     contados: set[int],
     escala: float,
+    deco: float | None = None,
 ) -> np.ndarray:
-    """ROI, líneas con flecha de sentido permitido y cajas por clase (verde = contado)."""
+    """ROI, líneas con flecha de sentido permitido y cajas por clase (verde = contado).
+
+    `escala` lleva las coordenadas al tamaño de salida; `deco` fija el grosor de los trazos
+    y el tamaño del texto (por defecto, igual a la escala).
+    """
+    deco = deco or escala
     out = cv2.resize(frame, None, fx=escala, fy=escala, interpolation=cv2.INTER_LINEAR)
     poligono = np.round(_transformar(H, geo.roi) * escala).astype(np.int32)
     capa = out.copy()
@@ -308,18 +316,18 @@ def dibujar_escena(
     out = dibujar_exclusiones(out, geo.exclusiones, H, escala)
     for linea in geo.lineas:
         pa, pb = np.round(_transformar(H, linea.puntos) * escala).astype(int)
-        cv2.line(out, tuple(pa), tuple(pb), (0, 0, 0), max(4, int(5 * escala)), cv2.LINE_AA)
-        cv2.line(out, tuple(pa), tuple(pb), COLOR_LINEA_PRESENTACION, max(2, int(3 * escala)),
+        cv2.line(out, tuple(pa), tuple(pb), (0, 0, 0), max(4, int(5 * deco)), cv2.LINE_AA)
+        cv2.line(out, tuple(pa), tuple(pb), COLOR_LINEA_PRESENTACION, max(2, int(3 * deco)),
                  cv2.LINE_AA)  # fmt: skip
-        _flecha_permitida(out, linea, H, escala)
-    grosor = max(1, int(round(1.5 * escala)))
+        _flecha_permitida(out, linea, H, escala, deco)
+    grosor = max(1, int(round(1.5 * deco)))
     for r in dets.itertuples(index=False):
         tid = int(r.track_id)
         color = COLOR_CONTADO if tid in contados else COLOR_CLASE.get(r.clase, (200, 200, 200))
         p1 = (int(r.x1 * escala), int(r.y1 * escala))
         p2 = (int(r.x2 * escala), int(r.y2 * escala))
         cv2.rectangle(out, p1, p2, color, grosor, cv2.LINE_AA)
-        _texto(out, str(tid), (p1[0], max(12, p1[1] - 4)), color, 0.35 * escala)
+        _texto(out, str(tid), (p1[0], max(12, p1[1] - 4)), color, 0.35 * deco)
     return out
 
 
@@ -372,6 +380,7 @@ def video_anotado(
     intervalos: pd.DataFrame | None = None,
     eventos: pd.DataFrame | None = None,
     escala: float = 1.5,
+    ancho_max: int = 1080,
 ) -> Path:
     """mp4 de presentación con la escena anotada y los contadores en pantalla."""
     from atlas_traffic.geometry import filtrar_exclusiones
@@ -381,7 +390,11 @@ def video_anotado(
     cap = cv2.VideoCapture(str(video))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    escala = min(escala, ancho_max / w)
     tam = (int(w * escala), int(h * escala))
+    # trazos y texto proporcionales al ancho final (464 px = clips de muestra): se leen igual
+    # en un video chico agrandado que en uno 1080p
+    deco = tam[0] / 464
     ultimo = int(detecciones["frame"].max()) if not detecciones.empty else -1
     por_frame = dict(tuple(detecciones.groupby("frame")))
     hs = homografias_por_frame(estabilizacion) if estabilizacion is not None else {}
@@ -415,12 +428,12 @@ def video_anotado(
                 (v for v in ventanas if v["t_inicio_s"] <= t < v["t_fin_s"]),
                 ventanas[-1] if ventanas else None,
             )
-            img = dibujar_escena(frame, geometria, H_inv, vigentes, contados, escala)
-            img = dibujar_panel(img, titulo, t, geometria, conteos, ventana, escala)
+            img = dibujar_escena(frame, geometria, H_inv, vigentes, contados, escala, deco)
+            img = dibujar_panel(img, titulo, t, geometria, conteos, ventana, deco)
             if momentos_evento.size and np.any(np.abs(momentos_evento - i) <= fps):
-                cv2.rectangle(img, (0, 0), (tam[0] - 1, tam[1] - 1), COLOR_EVENTO, int(6 * escala))
-                pos = (int(10 * escala), tam[1] - int(15 * escala))
-                _texto(img, "SENTIDO CONTRARIO", pos, COLOR_EVENTO, 0.7 * escala)
+                cv2.rectangle(img, (0, 0), (tam[0] - 1, tam[1] - 1), COLOR_EVENTO, int(6 * deco))
+                pos = (int(10 * deco), tam[1] - int(15 * deco))
+                _texto(img, "SENTIDO CONTRARIO", pos, COLOR_EVENTO, 0.7 * deco)
             writer.write(img)
     finally:
         cap.release()

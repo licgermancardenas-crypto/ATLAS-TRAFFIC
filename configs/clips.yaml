@@ -34,3 +34,18 @@ clips:
     clima: nublado
     geometria: configs/geometria/encuadre_m3.yaml
     notas: "vista a la avenida con cola de autos, 46 s; hora estimada"
+
+  # Video original del iPhone (4K HEVC, 60 fps), convertido a 1080x1920 H.264 sin pasar
+  # por WhatsApp. La cámara se acomoda los primeros ~5 s: se estabiliza contra el cuadro 600.
+  - id: esquina_20261105_1946
+    archivo: data/raw/esquina_20261105_1946.mp4
+    fecha: 2026-11-05
+    hora_inicio: "19:46"
+    dia_semana: jueves
+    tipo_dia: habil
+    clima: despejado
+    geometria: configs/geometria/encuadre_n1.yaml
+    frame_referencia: 600
+    imgsz: 1280
+    correccion: false  # validado a mano: 10/10 en la entrada y 15/15 en la salida
+    notas: "atardecer, alumbrado encendido, 25 s; video original del iPhone (sin WhatsApp)"

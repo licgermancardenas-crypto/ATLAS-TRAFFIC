@@ -245,8 +245,12 @@ def correr_clip(
     """Procesa un clip y escribe outputs/runs/<clip_id>/. Devuelve la carpeta de salida."""
     salida = cfg.rutas.outputs / "runs" / clip.id
     salida.mkdir(parents=True, exist_ok=True)
+    imgsz = clip.imgsz or cfg.deteccion.imgsz
+    if hasattr(detector, "ajustar"):
+        detector.ajustar(imgsz=imgsz)
+    estab = clip.estabilizacion(cfg.estabilizacion)
     res = detectar_video(
-        clip.archivo, detector, cfg.video.paso_frames, max_segundos, progreso, cfg.estabilizacion
+        clip.archivo, detector, cfg.video.paso_frames, max_segundos, progreso, estab
     )
     res.detecciones.to_parquet(salida / "detecciones.parquet", index=False)
     estab_path = salida / "estabilizacion.parquet"
@@ -261,7 +265,8 @@ def correr_clip(
         "frames_leidos": res.frames_leidos,
         "duracion_s": res.frames_leidos / res.fps,
         "modelo": cfg.deteccion.modelo,
-        "imgsz": cfg.deteccion.imgsz,
+        "imgsz": imgsz,
+        "frame_referencia": estab.frame_referencia,
     }
     (salida / "corrida.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return salida
@@ -340,9 +345,10 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
         luz = clip.luz or detectar_luz(leer_frame(clip.archivo, 0))
         tasas = {}
         if cfg.correccion.activa:
-            tasas = calcular_tasas(
-                leer_registros(cfg.correccion.registros), cfg.correccion.confianza
-            )
+            if clip.correccion:
+                tasas = calcular_tasas(
+                    leer_registros(cfg.correccion.registros), cfg.correccion.confianza
+                )
             conteo = conteo.join(corregir_conteo(conteo, tasas, luz).drop(columns="vehiculo"))
         conteo.to_csv(salida / "conteo.csv")
         tracks = anotar_tracks(tracks, cruces)

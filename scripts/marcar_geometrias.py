@@ -13,6 +13,32 @@ from atlas_traffic.geometry import guardar_geometria, lado
 RAIZ = Path(__file__).resolve().parents[1]
 
 ENCUADRES = {
+    # Video original del iPhone (1080x1920), marcado sobre el cuadro 600 (10 s), con las
+    # trayectorias de la corrida. Otra escala en píxeles: no comparte grupo con m1-m3.
+    "encuadre_n1": dict(
+        resolucion=(1080, 1920),
+        grupo=None,
+        centro=(620, 1320),
+        roi=[
+            (280, 1120),
+            (770, 1120),
+            (790, 1190),
+            (1080, 1180),
+            (1080, 1700),
+            (820, 1700),
+            (600, 1520),
+            (450, 1440),
+            (120, 1460),
+            (110, 1270),
+            (280, 1240),
+        ],
+        lineas={
+            "av_cordoba_frente": ((630, 1560), (1080, 1560)),
+            "av_cordoba_fondo": ((290, 1150), (760, 1150)),
+            "rodriguez_pena_der": ((1000, 1205), (1000, 1395)),
+            "rodriguez_pena_izq": ((130, 1280), (130, 1450)),
+        },
+    ),
     "encuadre_m1": dict(
         centro=(250, 445),
         roi=[
@@ -88,6 +114,13 @@ PERMITIDO = {
 # Líneas de peatones: atraviesan por la mitad la senda peatonal que cruza Córdoba del lado
 # de la cámara (corte paralelo a la avenida): toda persona que cruza la avenida la corta.
 SENDAS = {
+    "encuadre_n1": {
+        "senda_cordoba": ((870, 1330), (870, 1460)),
+        "senda_cordoba_fondo": ((520, 1170), (520, 1260)),
+        "senda_rodriguez_pena_izq": ((150, 1330), (260, 1330)),
+        "senda_rodriguez_pena_der": ((920, 1297), (980, 1193)),
+        "vereda_izquierda": ((100, 1500), (280, 1500)),
+    },
     "encuadre_m1": {"senda_cordoba": ((266, 480), (314, 530))},
     "encuadre_m2": {
         "senda_cordoba": ((138, 482), (192, 528)),
@@ -130,8 +163,8 @@ for encuadre, spec in ENCUADRES.items():
         provisoria = Linea(id=id_, puntos=puntos, sentido_positivo="entrante")
         sentido = "entrante" if lado(provisoria, spec["centro"]) > 0 else "saliente"
         lineas.append(Linea(id=id_, puntos=puntos, sentido_positivo=sentido, clases=["peaton"]))
-    geo = Geometria(encuadre=encuadre, resolucion=(464, 832), roi=spec["roi"], lineas=lineas,
-                    exclusiones=EXCLUSIONES.get(encuadre, []),
-                    grupo_normalizacion=GRUPO_NORMALIZACION)  # fmt: skip
+    geo = Geometria(encuadre=encuadre, resolucion=spec.get("resolucion", (464, 832)),
+                    roi=spec["roi"], lineas=lineas, exclusiones=EXCLUSIONES.get(encuadre, []),
+                    grupo_normalizacion=spec.get("grupo", GRUPO_NORMALIZACION))  # fmt: skip
     guardar_geometria(geo, RAIZ / "configs" / "geometria" / f"{encuadre}.yaml")
     print(encuadre, [(ln.id, ln.sentido_positivo) for ln in lineas])

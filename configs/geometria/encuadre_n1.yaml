@@ -1,0 +1,83 @@
+# Geometría del encuadre encuadre_n1. Generado con `atlas-traffic geometry`.
+# Coordenadas en el frame de referencia de la estabilización.
+# Cruce positivo = en el sentido de la flecha que dibuja el render.
+encuadre: encuadre_n1
+resolucion: [1080, 1920]
+roi:
+- [280, 1120]
+- [770, 1120]
+- [790, 1190]
+- [1080, 1180]
+- [1080, 1700]
+- [820, 1700]
+- [600, 1520]
+- [450, 1440]
+- [120, 1460]
+- [110, 1270]
+- [280, 1240]
+lineas:
+- id: av_cordoba_frente
+  puntos:
+  - [630, 1560]
+  - [1080, 1560]
+  sentido_positivo: saliente
+  sentido_permitido: entrante
+  clases: [vehiculo]
+- id: av_cordoba_fondo
+  puntos:
+  - [290, 1150]
+  - [760, 1150]
+  sentido_positivo: entrante
+  sentido_permitido: saliente
+  clases: [vehiculo]
+- id: rodriguez_pena_der
+  puntos:
+  - [1000, 1205]
+  - [1000, 1395]
+  sentido_positivo: entrante
+  sentido_permitido: entrante
+  clases: [vehiculo]
+- id: rodriguez_pena_izq
+  puntos:
+  - [130, 1280]
+  - [130, 1450]
+  sentido_positivo: saliente
+  sentido_permitido: saliente
+  clases: [vehiculo]
+- id: senda_cordoba
+  puntos:
+  - [870, 1330]
+  - [870, 1460]
+  sentido_positivo: entrante
+  sentido_permitido: ambos
+  clases: [peaton]
+- id: senda_cordoba_fondo
+  puntos:
+  - [520, 1170]
+  - [520, 1260]
+  sentido_positivo: saliente
+  sentido_permitido: ambos
+  clases: [peaton]
+- id: senda_rodriguez_pena_izq
+  puntos:
+  - [150, 1330]
+  - [260, 1330]
+  sentido_positivo: saliente
+  sentido_permitido: ambos
+  clases: [peaton]
+- id: senda_rodriguez_pena_der
+  puntos:
+  - [920, 1297]
+  - [980, 1193]
+  sentido_positivo: saliente
+  sentido_permitido: ambos
+  clases: [peaton]
+- id: vereda_izquierda
+  puntos:
+  - [100, 1500]
+  - [280, 1500]
+  sentido_positivo: saliente
+  sentido_permitido: ambos
+  clases: [peaton]
+exclusiones: []
+grupo_normalizacion: null

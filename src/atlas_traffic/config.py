@@ -132,6 +132,7 @@ class CorreccionCfg(_Modelo):
 
 class RenderCfg(_Modelo):
     escala: float = Field(1.5, gt=0)  # agranda el video anotado para que el texto se lea
+    ancho_max: int = Field(1080, ge=64)  # tope: un video 1080p no se agranda más
     gif_inicio_s: float = Field(0.0, ge=0)
     gif_duracion_s: float = Field(6.0, gt=0)
     gif_ancho: int = Field(320, ge=64)  # chico a propósito: no deja leer patentes
@@ -180,6 +181,21 @@ class Clip(_Modelo):
     # día / noche: elige la tasa de detección para corregir conteos. Si se omite, se
     # detecta por el tinte de la calle (ver correction.detectar_luz).
     luz: Literal["dia", "noche"] | None = None
+    # Ajustes opcionales de este clip (si se omiten, rige configs/default.yaml):
+    # - frame_referencia: cuadro sobre el que se marca la geometría y contra el que se
+    #   estabiliza. Útil si la cámara se acomoda al principio de la grabación.
+    # - imgsz: resolución de inferencia. Con video original (no WhatsApp) 1280 detecta
+    #   bastante más gente; en video comprimido no suma y es 4 veces más lento.
+    # - correccion: corregir los conteos con las tasas de detección de la validación. Esas
+    #   tasas se midieron con los videos de WhatsApp: no aplican a un video de otra calidad.
+    correccion: bool = True
+    frame_referencia: int | None = Field(None, ge=0)
+    imgsz: int | None = Field(None, ge=32)
+
+    def estabilizacion(self, base: EstabilizacionCfg) -> EstabilizacionCfg:
+        if self.frame_referencia is None:
+            return base
+        return base.model_copy(update={"frame_referencia": self.frame_referencia})
 
     @field_validator("dia_semana")
     @classmethod

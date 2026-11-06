@@ -2,19 +2,22 @@ velocidad_p90_por_encuadre:
   encuadre_m1: 1.3815874598686273
   encuadre_m2: 1.3815874598686273
   encuadre_m3: 1.3815874598686273
+  encuadre_n1: 4.152623914323787
 grupos:
   encuadre_m1: balcon_cordoba_1680
   encuadre_m2: balcon_cordoba_1680
   encuadre_m3: balcon_cordoba_1680
+  encuadre_n1: encuadre_n1
 densidad:
-  p33: 5.832284680693983
-  p66: 17.082222222222224
+  p33: 4.711034437338095
+  p66: 12.14277777777778
 velocidad_norm:
-  p33: 0.3486179429344173
-  p66: 0.753392287514189
-generado: '2026-11-06T11:54:59'
+  p33: 0.380269673762722
+  p66: 0.7169525019133253
+generado: '2026-11-06T12:33:08'
 clips:
+- esquina_20261105_1946
 - muestra_1
 - muestra_2
 - muestra_3
-n_intervalos: 5
+n_intervalos: 6

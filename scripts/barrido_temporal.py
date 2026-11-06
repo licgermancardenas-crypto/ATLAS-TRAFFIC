@@ -14,17 +14,19 @@ import cv2
 import numpy as np
 import pandas as pd
 
-from atlas_traffic.config import load_geometria
+from atlas_traffic.clips import get_clip, load_clips
+from atlas_traffic.config import load_app_config, load_geometria
 from atlas_traffic.render import homografias_por_frame
 
 clip = sys.argv[1]
 segundos = float(sys.argv[2]) if len(sys.argv) > 2 else 20
 salida_dir = Path(sys.argv[3]) if len(sys.argv) > 3 else Path(".")
 raiz = Path(__file__).resolve().parents[1]
-geo = load_geometria(raiz / f"configs/geometria/encuadre_m{clip[-1]}.yaml")
+c = get_clip(load_clips(raiz / load_app_config(raiz / "configs/default.yaml").rutas.clips), clip)
+geo = load_geometria(raiz / c.geometria)
 hs = homografias_por_frame(pd.read_parquet(raiz / f"outputs/runs/{clip}/estabilizacion.parquet"))
 
-cap = cv2.VideoCapture(str(raiz / f"data/raw/{clip}.mp4"))
+cap = cv2.VideoCapture(str(raiz / c.archivo))
 fps = cap.get(cv2.CAP_PROP_FPS)
 n = int(segundos * fps)
 # cada línea se ensancha a una franja de 5 px (perpendicular) para no perder vehículos finos

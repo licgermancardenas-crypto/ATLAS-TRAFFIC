@@ -160,6 +160,10 @@ class UltralyticsDetector:
         self._model = YOLO(modelo)
         self._kw["classes"] = self._clases_utiles()
 
+    def ajustar(self, imgsz: int) -> None:
+        """Cambia la resolución de inferencia (se ajusta por clip, ver Clip.imgsz)."""
+        self._kw["imgsz"] = imgsz
+
     def _clases_utiles(self) -> list[int]:
         """Números de clase del modelo cargado que corresponden a las clases del proyecto."""
         return sorted(i for i, n in self._model.names.items() if n in NOMBRE_A_PROYECTO)
