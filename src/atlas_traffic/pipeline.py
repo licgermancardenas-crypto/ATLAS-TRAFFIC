@@ -51,6 +51,7 @@ from atlas_traffic.stabilize import (
     suavizar_homografias,
     transformar_puntos,
 )
+from atlas_traffic.stitching import aplicar_uniones, unir_tracks
 
 COLUMNAS_DETECCIONES = [
     "frame", "ts", "track_id", "clase", "clase_detalle", "confianza",
@@ -285,6 +286,16 @@ class ResultadoAnalisis:
     excluidos: tuple[int, ...] = ()  # tracks descartados por zonas de exclusión
 
 
+def cargar_detecciones(salida: Path) -> pd.DataFrame:
+    """detecciones.parquet con los tracks ya unidos como en el análisis (para dibujar)."""
+    det = pd.read_parquet(salida / "detecciones.parquet")
+    ruta = salida / "uniones.parquet"
+    if ruta.exists():
+        u = pd.read_parquet(ruta)
+        det = aplicar_uniones(det, dict(zip(u["track_id_original"], u["track_id"], strict=True)))
+    return det
+
+
 def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
     """De detecciones.parquet a tracks.parquet + cruces.parquet + conteo.csv.
 
@@ -299,6 +310,22 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
     excluidos: list[int] = []
     if clip.geometria.exists():
         det, excluidos = filtrar_exclusiones(det, load_geometria(clip.geometria))
+    mapa: dict[int, int] = {}
+    if cfg.union.activa:
+        u = cfg.union
+        mapa = unir_tracks(det, u.hueco_max_s, u.factor_distancia)
+        det = aplicar_uniones(det, mapa)
+        mapa_peat = unir_tracks(
+            det, u.peaton_hueco_max_s, u.peaton_factor_distancia,
+            clases=("peaton",), velocidad_min_px_s=u.peaton_velocidad_min_px_s,
+        )  # fmt: skip
+        det = aplicar_uniones(det, mapa_peat)
+        # mapa total: original -> final (componer las dos pasadas)
+        mapa = {k: mapa_peat.get(v, v) for k, v in mapa.items()} | {
+            k: v for k, v in mapa_peat.items() if k not in mapa
+        }
+    uniones = pd.DataFrame({"track_id_original": list(mapa), "track_id": list(mapa.values())})
+    uniones.to_parquet(salida / "uniones.parquet", index=False)
     meta = leer_corrida(salida, clip, cfg, det)
     ventana = max(1, round(cfg.metricas.ventana_velocidad_s * meta["fps"]))
     tracks = tracks_desde_detecciones(det, ventana)

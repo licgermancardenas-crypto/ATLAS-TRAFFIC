@@ -29,6 +29,14 @@ conteo:
   margen_px: 4               # banda muerta: un auto quieto sobre la línea no cuenta cruces
   ida_vuelta_min_s: 1.0      # cruzar y volver en menos de 1 s es ruido: no cuenta
 
+union:                       # une tracks cortados por una oclusión breve (stitching.py)
+  activa: true
+  hueco_max_s: 0.5           # con huecos más largos se confunden objetos vecinos
+  factor_distancia: 0.5      # error de predicción tolerado, en alturas de caja
+  peaton_hueco_max_s: 1.5    # 2da pasada, solo personas caminando: el grupo se pierde al cruzar
+  peaton_factor_distancia: 1.5
+  peaton_velocidad_min_px_s: 4.0   # una persona quieta no se une: no está cruzando
+
 color:
   max_frames: 10             # frames muestreados por track
   solape_max: 0.4            # descarta frames con solape de cajas mayor a esto

@@ -3,7 +3,7 @@ av_cordoba_frente,entrante,37,0,1.0,37.0,37.00000000000001,40.553349409142065,Tr
 av_cordoba_frente,saliente,0,0,1.0,0.0,0.0,0.0,True
 av_cordoba_fondo,entrante,0,0,0.8571428571428571,0.0,0.0,0.0,True
 av_cordoba_fondo,saliente,21,0,0.8571428571428571,24.5,22.269118232745445,30.652370980046474,True
-rodriguez_pena_der,entrante,2,0,,2.0,,,False
+rodriguez_pena_der,entrante,3,0,,3.0,,,False
 rodriguez_pena_der,saliente,2,0,,2.0,,,False
 rodriguez_pena_izq,entrante,0,0,1.0,0.0,0.0,0.0,True
 rodriguez_pena_izq,saliente,3,0,1.0,3.0,3.0,8.762188231041184,True
@@ -12,6 +12,6 @@ senda_cordoba,saliente,0,0,,0.0,,,False
 senda_cordoba_fondo,entrante,0,0,,0.0,,,False
 senda_cordoba_fondo,saliente,0,0,,0.0,,,False
 vereda_cordoba_edificios,entrante,0,0,,0.0,,,False
-vereda_cordoba_edificios,saliente,0,2,,0.0,,,False
-vereda_cordoba_parada,entrante,0,4,,0.0,,,False
-vereda_cordoba_parada,saliente,0,0,,0.0,,,False
+vereda_cordoba_edificios,saliente,0,4,,0.0,,,False
+ciclovia_cordoba,entrante,0,4,,0.0,,,False
+ciclovia_cordoba,saliente,0,0,,0.0,,,False

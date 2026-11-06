@@ -63,7 +63,7 @@ lineas:
   sentido_positivo: saliente
   sentido_permitido: ambos
   clases: [peaton]
-- id: vereda_cordoba_parada
+- id: ciclovia_cordoba
   puntos:
   - [185, 560]
   - [245, 560]

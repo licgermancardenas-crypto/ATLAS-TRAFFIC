@@ -2,7 +2,9 @@
 
 Reglas:
 - Todo se mide en coordenadas de referencia (cx_ref, cy_ref): la cámara puede moverse.
-- Tracks cuyo centroide nunca entra a la ROI se descartan (tránsito del fondo).
+- Vehículos cuyo centroide nunca entra a la ROI se descartan (tránsito del fondo). Las
+  personas no: la ROI cubre la calzada, y una persona puede caminar toda su vida por la
+  vereda, donde están sus líneas.
 - Lado de un punto respecto de una línea: signo de lado() (ver geometry.py). Hay una
   banda muerta de ±margen_px alrededor de la línea donde el lado no cambia: un vehículo
   detenido sobre la línea tiembla un par de píxeles y sin banda contaría cruces falsos.
@@ -110,7 +112,8 @@ def contar(
     det = det.sort_values(["track_id", "frame"])
     xy_todo = det[["cx_ref", "cy_ref"]].to_numpy(dtype=np.float64)
     en_roi = pd.Series(dentro_roi(geo.roi, xy_todo), index=det.index)
-    tracks_validos = en_roi.groupby(det["track_id"]).any()
+    clase_track = det.groupby("track_id")["clase"].agg(lambda s: s.mode().iat[0])
+    tracks_validos = en_roi.groupby(det["track_id"]).any() | (clase_track != "vehiculo")
     filas: list[tuple] = []
     for tid, g in det[det["track_id"].isin(tracks_validos[tracks_validos].index)].groupby(
         "track_id"

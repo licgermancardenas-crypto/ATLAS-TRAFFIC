@@ -120,9 +120,10 @@ def _procesar_clip(
         import pandas as pd
 
         from atlas_traffic.config import load_geometria
+        from atlas_traffic.pipeline import cargar_detecciones
         from atlas_traffic.render import video_debug, video_estabilizado
 
-        det = pd.read_parquet(salida / "detecciones.parquet")
+        det = cargar_detecciones(salida)
         ruta_estab = salida / "estabilizacion.parquet"
         estab = pd.read_parquet(ruta_estab) if ruta_estab.exists() else None
         geo = load_geometria(c.geometria) if c.geometria.exists() else None
@@ -150,8 +151,10 @@ def _render_presentacion(c, cfg, salida: Path) -> None:
         ruta = salida / nombre
         return pd.read_parquet(ruta) if ruta.exists() else None
 
+    from atlas_traffic.pipeline import cargar_detecciones
+
     mp4 = video_anotado(
-        c.archivo, leer("detecciones.parquet"), load_geometria(c.geometria),
+        c.archivo, cargar_detecciones(salida), load_geometria(c.geometria),
         salida / "anotado.mp4", titulo=c.id, estabilizacion=leer("estabilizacion.parquet"),
         cruces=leer("cruces.parquet"), intervalos=leer("intervalos.parquet"),
         eventos=leer("eventos.parquet"), escala=cfg.render.escala,

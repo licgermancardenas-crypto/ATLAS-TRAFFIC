@@ -96,10 +96,11 @@ SENDAS = {
     "encuadre_m3": {
         "senda_cordoba": ((281, 511), (319, 569)),
         "senda_cordoba_fondo": ((188, 404), (212, 436)),  # cruza Córdoba del otro lado
-        # veredas: líneas que atraviesan la vereda de Córdoba del lado de la cámara, donde
-        # se ve caminar a la gente (trayectorias del modelo de la esquina)
+        # vereda de Córdoba del lado de la cámara, donde se ve caminar a la gente
         "vereda_cordoba_edificios": ((5, 545), (95, 545)),
-        "vereda_cordoba_parada": ((185, 560), (245, 560)),
+        # ciclovía de Córdoba junto a la parada: el modelo ve a los ciclistas como personas
+        # (no hay clase bicicleta), así que esta línea cuenta personas en bici
+        "ciclovia_cordoba": ((185, 560), (245, 560)),
     },
 }
 

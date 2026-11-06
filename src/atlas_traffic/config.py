@@ -99,6 +99,23 @@ class ConteoCfg(_Modelo):
     ida_vuelta_min_s: float = Field(1.0, ge=0.0)
 
 
+class UnionCfg(_Modelo):
+    """Unión de tracks cortados por una oclusión (ver stitching.py)."""
+
+    activa: bool = True
+    # a esta resolución, con huecos más largos el movimiento ya no distingue a un objeto
+    # de su vecino (validado a ojo en muestra_3): mejor no unir que unir mal
+    hueco_max_s: float = Field(0.5, ge=0.0)
+    factor_distancia: float = Field(0.5, gt=0.0)
+    # segunda pasada, solo personas en movimiento: caminando en grupo el tracker las pierde
+    # 1-1.5 s justo al cruzar la línea. Para contar no hace falta saber quién es quién:
+    # alcanza con emparejar a quien desaparece caminando hacia la línea con quien aparece
+    # del otro lado siguiendo igual.
+    peaton_hueco_max_s: float = Field(1.5, ge=0.0)
+    peaton_factor_distancia: float = Field(1.5, gt=0.0)
+    peaton_velocidad_min_px_s: float = Field(4.0, ge=0.0)
+
+
 class AlertasCfg(_Modelo):
     min_frames_historia: int = Field(15, ge=1)
     min_desplazamiento_px: float = Field(40.0, ge=0.0)
@@ -135,6 +152,7 @@ class AppConfig(_Modelo):
     metricas: MetricasCfg = MetricasCfg()
     color: ColorCfg = ColorCfg()
     conteo: ConteoCfg = ConteoCfg()
+    union: UnionCfg = UnionCfg()
     alertas: AlertasCfg = AlertasCfg()
     correccion: CorreccionCfg = CorreccionCfg()
     render: RenderCfg = RenderCfg()

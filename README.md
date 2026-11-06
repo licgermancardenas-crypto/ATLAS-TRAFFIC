@@ -37,6 +37,9 @@ Además:
 - **Usa un detector ajustado a esta esquina.** Es `yolov8s` reentrenado con imágenes de
   la propia esquina (fine-tuning): detecta el 88 % de los vehículos contra el 81 % del
   modelo general, y además motos. Ver [docs/entrenamiento.md](docs/entrenamiento.md).
+- **Une los seguimientos cortados.** Cuando algo tapa un objeto un instante, o una
+  persona se pierde en un grupo al cruzar una línea, los dos pedazos se unen para que
+  el cruce cuente (`src/atlas_traffic/stitching.py`).
 - **Compensa el movimiento de la cámara.** Los clips están filmados con el teléfono en
 la mano y la vista se corre hasta 130 px. Cada frame se alinea con uno de referencia por
 homografía, y el conteo trabaja en esas coordenadas fijas.
@@ -168,6 +171,7 @@ cumplió del todo.
 | Fase | Criterio | Resultado | Detalle |
 |---|---|---|---|
 | Conteo | ±10 % por línea contra conteo manual | ✅ muestra_2: −4.5 %, −5.6 % y 0 %. ⚠️ muestra_3: frente ✅, fondo ✗ (motos). ❌ noche. Cero cruces falsos en los tres clips | [validacion_conteo.md](docs/validacion_conteo.md) |
+| Personas | (fuera del brief) | ⚠️ vereda 4 de 7, ciclovía ~4 de 9. Sin conteos falsos | [validacion_peatones.md](docs/validacion_peatones.md) |
 | Color | saturados > 85 %, acromáticos > 65 % | ✅ día 88 % y 76 %; noche 100 % y 71 % con balance de blancos | [validacion_color.md](docs/validacion_color.md) |
 | Sentido contrario | cero falsos positivos | ✅ 0 eventos en 3 clips; la prueba controlada dispara en 81 de 84 cruces | [validacion_alertas.md](docs/validacion_alertas.md) |
 | Congestión | congestionado = HIGH, liviano = LOW, sin ajuste manual | ✅ con la salvedad del supuesto de flujo libre | [validacion_congestion.md](docs/validacion_congestion.md) |
@@ -215,13 +219,14 @@ con **intervalo de confianza del 95 %** (Wilson).
   fijo en la baranda (brief §8).
 - **Personas:**
   - Cada línea declara qué cuenta (vehículos o personas). Hay líneas de personas sobre
-    las sendas peatonales y sobre las veredas.
-  - En muestra_3 se contaron 6 personas caminando por la vereda de Córdoba. Revisadas a
-    ojo, son todas personas, pero una está contada dos veces porque el seguimiento le
-    cambió el número.
+    las sendas peatonales, la vereda de Córdoba y la ciclovía (el modelo ve a los
+    ciclistas como personas).
+  - Contra un conteo manual, el sistema detecta ~57 % de la gente que camina por la
+    vereda (4 de 7) y ~45 % de los ciclistas, siempre por omisión y sin conteos falsos.
+    Son personas de ~25 px que caminan en grupo. Ver
+    [docs/validacion_peatones.md](docs/validacion_peatones.md).
   - Nadie cruzó la calle por las sendas durante los clips: las personas cercanas esperan
     en la esquina mientras los autos tienen verde.
-  - No hay todavía un conteo manual de personas para medir el error.
 - **Motos:** el modelo ajustado a la esquina empieza a detectarlas (en el fondo de
   muestra_3 recupera 2 de 5), pero las lejanas se siguen perdiendo. Subir la resolución
   de inferencia no lo resuelve: con la compresión de WhatsApp esa información ya se perdió.

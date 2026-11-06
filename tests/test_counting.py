@@ -163,3 +163,12 @@ def test_ida_y_vuelta_instantanea_no_cuenta():
                           "track_id": 2, "clase": "vehiculo", "clase_detalle": "car",
                           "cx_ref": 200.0, "cy_ref": [60.0, 120.0, 120.0, 60.0]})  # fmt: skip
     assert sorted(contar(lento, GEO)["sentido"]) == ["entrante", "saliente"]
+
+
+def test_la_roi_filtra_vehiculos_pero_no_personas():
+    # una vereda fuera de la ROI, con su línea de personas
+    vereda = Linea(id="vereda", puntos=((360, 350), (390, 350)), sentido_positivo="entrante",
+                   clases=["peaton"])  # fmt: skip
+    geo = GEO.model_copy(update={"lineas": [LINEA, vereda]})
+    det = _det({1: [(375, 320), (375, 380)]}, clase="peaton")
+    assert list(contar(det, geo)["aproximacion"]) == ["vereda"]
