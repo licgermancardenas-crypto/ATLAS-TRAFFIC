@@ -37,6 +37,8 @@ Además:
 - **Usa un detector ajustado a esta esquina.** Es `yolov8s` reentrenado con imágenes de
   la propia esquina (fine-tuning): detecta el 88 % de los vehículos contra el 81 % del
   modelo general, y además motos. Ver [docs/entrenamiento.md](docs/entrenamiento.md).
+- **Arma la matriz de giros:** por dónde entra y por dónde sale cada vehículo, con el
+  porcentaje de cada giro y su margen de error. Ver [docs/giros.md](docs/giros.md).
 - **Une los seguimientos cortados.** Cuando algo tapa un objeto un instante, o una
   persona se pierde en un grupo al cruzar una línea, los dos pedazos se unen para que
   el cruce cuente (`src/atlas_traffic/stitching.py`).

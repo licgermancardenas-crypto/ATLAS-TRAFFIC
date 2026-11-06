@@ -52,6 +52,7 @@ from atlas_traffic.stabilize import (
     transformar_puntos,
 )
 from atlas_traffic.stitching import aplicar_uniones, unir_tracks
+from atlas_traffic.turning import movimientos
 
 COLUMNAS_DETECCIONES = [
     "frame", "ts", "track_id", "clase", "clase_detalle", "confianza",
@@ -334,6 +335,7 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
         geo = load_geometria(clip.geometria)
         cruces = contar(det, geo, cfg.conteo.margen_px, cfg.conteo.ida_vuelta_min_s)
         cruces.to_parquet(salida / "cruces.parquet", index=False)
+        movimientos(cruces, det, geo).to_parquet(salida / "giros.parquet", index=False)
         conteo = resumen_conteo(cruces, geo)
         luz = clip.luz or detectar_luz(leer_frame(clip.archivo, 0))
         tasas = {}
@@ -367,7 +369,9 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
         eventos = guardar_evidencia(clip.archivo, eventos, det, geo, salida / "eventos", hs)
         eventos.to_parquet(salida / "eventos.parquet", index=False)
     else:
-        for viejo in ("cruces.parquet", "conteo.csv", "intervalos.parquet", "eventos.parquet"):
+        viejos = ("cruces.parquet", "conteo.csv", "intervalos.parquet", "eventos.parquet",
+                  "giros.parquet")  # fmt: skip
+        for viejo in viejos:
             (salida / viejo).unlink(missing_ok=True)
     atributos = extraer_atributos(clip.archivo, det, cfg.color, salida / "thumbs")
     tracks = tracks.drop(columns=["color", "color_confianza", "thumb"], errors="ignore")

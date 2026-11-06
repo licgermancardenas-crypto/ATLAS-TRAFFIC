@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -105,6 +105,7 @@ class ResultadoConsolidacion:
     eventos: pd.DataFrame
     cruces: pd.DataFrame
     rutas: dict[str, Path]
+    giros: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 def _prefijar_thumbs(df: pd.DataFrame, clip: Clip) -> pd.DataFrame:
@@ -115,7 +116,7 @@ def _prefijar_thumbs(df: pd.DataFrame, clip: Clip) -> pd.DataFrame:
 
 
 def consolidar(cfg: AppConfig, clips: list[Clip]) -> ResultadoConsolidacion:
-    summary, tracks, eventos, cruces = [], [], [], []
+    summary, tracks, eventos, cruces, giros = [], [], [], [], []
     for c in clips:
         d = _dir_corrida(cfg, c)
         if not (d / "intervalos.parquet").exists():
@@ -142,6 +143,8 @@ def consolidar(cfg: AppConfig, clips: list[Clip]) -> ResultadoConsolidacion:
                 cr = cr.merge(atributos, on="track_id", how="left").assign(clip_id=c.id, **meta)
                 cr["hora"] = inicio + pd.to_timedelta(cr["ts_cruce"], unit="s")
                 cruces.append(cr)
+        if (d / "giros.parquet").exists():
+            giros.append(pd.read_parquet(d / "giros.parquet").assign(clip_id=c.id, **meta))
         if (d / "eventos.parquet").exists():
             e = _prefijar_thumbs(pd.read_parquet(d / "eventos.parquet"), c).assign(**meta)
             e["hora"] = inicio + pd.to_timedelta(e["ts"], unit="s")
@@ -159,10 +162,13 @@ def consolidar(cfg: AppConfig, clips: list[Clip]) -> ResultadoConsolidacion:
             "tracks": salida / "tracks_todos.parquet",
             "eventos": salida / "eventos_todos.parquet",
             "cruces": salida / "cruces_todos.parquet",
+            "giros": salida / "giros_todos.parquet",
         },
+        giros=pd.concat(giros, ignore_index=True) if giros else pd.DataFrame(),
     )
     res.summary.to_parquet(res.rutas["summary"], index=False)
     res.tracks.to_parquet(res.rutas["tracks"], index=False)
     res.eventos.to_parquet(res.rutas["eventos"], index=False)
     res.cruces.to_parquet(res.rutas["cruces"], index=False)
+    res.giros.to_parquet(res.rutas["giros"], index=False)
     return res

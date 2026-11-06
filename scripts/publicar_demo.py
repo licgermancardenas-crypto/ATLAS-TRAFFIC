@@ -15,7 +15,7 @@ ORIGEN = RAIZ / "outputs"
 DESTINO = RAIZ / "demo" / "outputs"
 
 CONSOLIDADOS = ["summary.parquet", "tracks_todos.parquet", "cruces_todos.parquet",
-                "eventos_todos.parquet"]  # fmt: skip
+                "eventos_todos.parquet", "giros_todos.parquet"]  # fmt: skip
 
 
 def main() -> None:

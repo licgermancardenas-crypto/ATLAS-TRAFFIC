@@ -24,6 +24,7 @@ class Datos:
     eventos: pd.DataFrame
     outputs: Path
     conteos: pd.DataFrame = field(default_factory=pd.DataFrame)  # conteo.csv de cada clip
+    giros: pd.DataFrame = field(default_factory=pd.DataFrame)  # origen -> destino por vehículo
 
     @property
     def vacio(self) -> bool:
@@ -44,6 +45,7 @@ def cargar(outputs: Path) -> Datos:
         tracks=leer("tracks_todos.parquet"),
         cruces=leer("cruces_todos.parquet"),
         eventos=leer("eventos_todos.parquet"),
+        giros=leer("giros_todos.parquet"),
         outputs=outputs,
     )
 

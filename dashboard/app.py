@@ -146,9 +146,56 @@ def panorama(datos) -> None:
                 "ic_bajo", "ic_alto", "tasa_deteccion", "validada"]  # fmt: skip
         st.dataframe(k[cols].round(1), hide_index=True, width="stretch")
 
+    if not datos.giros.empty:
+        giros(datos.giros)
+
     st.subheader("Clips")
     tabla = tabla_clips(s).round({"flujo_veh_min": 1, "densidad_media": 1})
     st.dataframe(tabla, hide_index=True, width="stretch")
+
+
+CALLES = {"av_cordoba": "Córdoba", "rodriguez_pena": "Rodríguez Peña"}
+
+
+def _calle(linea: str) -> str:
+    base = linea.rsplit("_", 1)[0]
+    return CALLES.get(base, base.replace("_", " ").title())
+
+
+def giros(g: pd.DataFrame) -> None:
+    from atlas_traffic.turning import RECORRIDOS_COMPLETOS, reparto_giros
+
+    st.subheader("Giros: por dónde entra y por dónde sale cada vehículo")
+    r = reparto_giros(g)
+    if r.empty:
+        st.info("Todavía no hay recorridos completos para armar la matriz de giros.")
+        return
+    completos = g["estado"].isin(RECORRIDOS_COMPLETOS).sum()
+    con_origen = g["origen"].notna() & (g["estado"] != "dudoso")
+    st.caption(
+        f"Se ve el recorrido completo de {completos} de {int(con_origen.sum())} vehículos que "
+        "entraron. El resto se pierde de vista dentro del cruce o el clip termina antes de que "
+        "salgan. El porcentaje de cada giro sale de los recorridos completos (con intervalo "
+        "del 95 %), y el volumen estimado aplica ese porcentaje a todos los que entraron por "
+        "ese origen. Algunos recorridos se reconstruyen: el vehículo aparece ya pasada la "
+        "entrada, o un objeto lo tapa y reaparece."
+    )
+    r = r.assign(
+        movimiento=[
+            f"{_calle(o)} → {'sigue por' if _calle(o) == _calle(d) else 'dobla a'} {_calle(d)}"
+            for o, d in zip(r["origen"], r["destino"], strict=True)
+        ],
+        porcentaje=[f"{p:.0%} ({lo:.0%}–{hi:.0%})"
+                    for p, lo, hi in zip(r["pct"], r["pct_inf"], r["pct_sup"], strict=True)],
+    )  # fmt: skip
+    tabla = r[["movimiento", "observados", "porcentaje", "entradas_origen", "volumen_estimado"]]
+    st.dataframe(
+        tabla.round({"volumen_estimado": 0}).rename(columns={
+            "observados": "recorridos completos", "porcentaje": "% del origen (IC 95 %)",
+            "entradas_origen": "entraron por ese origen", "volumen_estimado": "volumen estimado",
+        }),
+        hide_index=True, width="stretch",
+    )  # fmt: skip
 
 
 LEYENDA_VIDEO = """
