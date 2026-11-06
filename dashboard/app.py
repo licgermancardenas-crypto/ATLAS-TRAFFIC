@@ -394,9 +394,9 @@ def main() -> None:
     if datos.vacio and (DEMO / "summary.parquet").exists():
         # sin datos locales (por ejemplo, en la nube): se muestran los publicados
         datos = _cargar(str(DEMO))
-        st.info("Datos de demostración: tres clips de muestra de 23 a 50 s, grabados con el "
-                "teléfono en la mano y enviados por WhatsApp (464 × 832). Ver limitaciones en "
-                "el README del repositorio.")  # fmt: skip
+        st.info("Datos de demostración: tres clips de 23 a 50 s enviados por WhatsApp "
+                "(464 × 832) y uno de 25 s con el video original del iPhone. Ver limitaciones "
+                "en el README del repositorio.")  # fmt: skip
     if datos.vacio:
         st.warning("No hay datos consolidados en outputs/. Corré `atlas-traffic batch` primero.")
         st.stop()
@@ -414,12 +414,21 @@ def main() -> None:
     if directa in vistas:
         titulo, dibujar = vistas[directa]
         st.header(titulo)
-        dibujar()
+        _seguro(titulo, dibujar)
         return
-    for pestana, (_, dibujar) in zip(st.tabs([t for t, _ in vistas.values()]), vistas.values(),
-                                     strict=True):  # fmt: skip
+    for pestana, (titulo, dibujar) in zip(
+        st.tabs([t for t, _ in vistas.values()]), vistas.values(), strict=True
+    ):
         with pestana:
-            dibujar()
+            _seguro(titulo, dibujar)
+
+
+def _seguro(titulo: str, dibujar) -> None:
+    """Dibuja una pestaña; si falla, muestra el error ahí y las demás siguen funcionando."""
+    try:
+        dibujar()
+    except Exception as e:  # noqa: BLE001 - una pestaña rota no debe tirar el dashboard
+        st.error(f"No se pudo mostrar {titulo}: {type(e).__name__}: {e}")
 
 
 main()

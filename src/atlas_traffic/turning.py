@@ -28,7 +28,6 @@ import pandas as pd
 
 from atlas_traffic.config import Geometria, Linea
 from atlas_traffic.correction import wilson
-from atlas_traffic.geometry import lado
 from atlas_traffic.stitching import resumen_extremos
 
 __all__ = ["COLUMNAS_GIROS", "movimientos", "matriz_giros", "reparto_giros"]
@@ -75,6 +74,10 @@ def _origen_inferido(
 ) -> str | None:
     """Entrada más cercana a p, si p quedó del lado de adentro, a menos de la distancia,
     y el vehículo (si se mueve) se aleja de ella hacia adentro."""
+    # import local: geometry usa OpenCV, y el dashboard publicado (que importa este módulo
+    # para el reparto de giros) corre sin OpenCV
+    from atlas_traffic.geometry import lado
+
     mejor, dist_mejor = None, distancia_max_px
     for linea in geo.lineas:
         if "vehiculo" not in linea.clases or linea.sentido_permitido != "entrante":
