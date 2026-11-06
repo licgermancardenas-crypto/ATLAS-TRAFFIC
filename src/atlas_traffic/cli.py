@@ -153,12 +153,19 @@ def _render_presentacion(c, cfg, salida: Path) -> None:
 
     from atlas_traffic.pipeline import cargar_detecciones
 
+    # velocidad de cada vehículo junto a su número (si el encuadre tiene calibración)
+    tracks = leer("tracks.parquet")
+    etiquetas = {}
+    if tracks is not None and "velocidad_kmh" in tracks:
+        v = tracks.dropna(subset=["velocidad_kmh"])
+        pares = zip(v["track_id"], v["velocidad_kmh"], strict=True)
+        etiquetas = {int(t): f"{k:.0f} km/h" for t, k in pares}
     mp4 = video_anotado(
         c.archivo, cargar_detecciones(salida), load_geometria(c.geometria),
         salida / "anotado.mp4", titulo=c.id, estabilizacion=leer("estabilizacion.parquet"),
         cruces=leer("cruces.parquet"), intervalos=leer("intervalos.parquet"),
         eventos=leer("eventos.parquet"), escala=cfg.render.escala,
-        ancho_max=cfg.render.ancho_max,
+        ancho_max=cfg.render.ancho_max, etiquetas=etiquetas,
     )  # fmt: skip
     typer.echo(f"Video anotado -> {mp4}")
     web = exportar_video_web(mp4, salida / "video_web.mp4")

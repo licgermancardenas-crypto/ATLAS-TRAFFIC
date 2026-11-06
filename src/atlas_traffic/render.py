@@ -300,6 +300,7 @@ def dibujar_escena(
     contados: set[int],
     escala: float,
     deco: float | None = None,
+    etiquetas: dict[int, str] | None = None,
 ) -> np.ndarray:
     """ROI, líneas con flecha de sentido permitido y cajas por clase (verde = contado).
 
@@ -327,7 +328,8 @@ def dibujar_escena(
         p1 = (int(r.x1 * escala), int(r.y1 * escala))
         p2 = (int(r.x2 * escala), int(r.y2 * escala))
         cv2.rectangle(out, p1, p2, color, grosor, cv2.LINE_AA)
-        _texto(out, str(tid), (p1[0], max(12, p1[1] - 4)), color, 0.35 * deco)
+        texto = f"{tid} | {etiquetas[tid]}" if etiquetas and tid in etiquetas else str(tid)
+        _texto(out, texto, (p1[0], max(12, p1[1] - 4)), color, 0.35 * deco)
     return out
 
 
@@ -381,6 +383,7 @@ def video_anotado(
     eventos: pd.DataFrame | None = None,
     escala: float = 1.5,
     ancho_max: int = 1080,
+    etiquetas: dict[int, str] | None = None,
 ) -> Path:
     """mp4 de presentación con la escena anotada y los contadores en pantalla."""
     from atlas_traffic.geometry import filtrar_exclusiones
@@ -428,7 +431,9 @@ def video_anotado(
                 (v for v in ventanas if v["t_inicio_s"] <= t < v["t_fin_s"]),
                 ventanas[-1] if ventanas else None,
             )
-            img = dibujar_escena(frame, geometria, H_inv, vigentes, contados, escala, deco)
+            img = dibujar_escena(
+                frame, geometria, H_inv, vigentes, contados, escala, deco, etiquetas
+            )
             img = dibujar_panel(img, titulo, t, geometria, conteos, ventana, deco)
             if momentos_evento.size and np.any(np.abs(momentos_evento - i) <= fps):
                 cv2.rectangle(img, (0, 0), (tam[0] - 1, tam[1] - 1), COLOR_EVENTO, int(6 * deco))

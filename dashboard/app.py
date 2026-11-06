@@ -78,13 +78,16 @@ def panorama(datos) -> None:
         "flujo_entrante_corr_min": "Entran al cruce, corregido (veh/min)",
         "flujo_veh_min": "Atraviesan el cruce, crudo (veh/min)",
         "densidad_media": "Densidad (veh en zona)",
+        "velocidad_kmh_media": "Velocidad media (km/h)",
+        "velocidad_kmh_p85": "Velocidad p85 (km/h)",
         "velocidad_norm": "Velocidad normalizada",
     }
     disponibles = [m for m in nombres if m in s.columns]
     metrica = st.radio("Métrica", disponibles, horizontal=True, format_func=nombres.get)
     tooltip = [c for c in ["clip_id", "luz", "inicio", "t_inicio_s", "flujo_entrante_min",
                "flujo_entrante_corr_min", "flujo_entrante_ic_bajo", "flujo_entrante_ic_alto",
-               "flujo_veh_min", "densidad_media", "velocidad_norm", "congestion"]
+               "flujo_veh_min", "densidad_media", "velocidad_kmh_media", "velocidad_kmh_p85",
+               "velocidad_norm", "congestion"]
                if c in s.columns]  # fmt: skip
     base = alt.Chart(s).encode(
         x=alt.X("t_inicio_s:Q", title="segundo del clip"),
@@ -146,12 +149,46 @@ def panorama(datos) -> None:
                 "ic_bajo", "ic_alto", "tasa_deteccion", "validada"]  # fmt: skip
         st.dataframe(k[cols].round(1), hide_index=True, width="stretch")
 
+    velocidades(datos.tracks)
+
     if not datos.giros.empty:
         giros(datos.giros)
 
     st.subheader("Clips")
     tabla = tabla_clips(s).round({"flujo_veh_min": 1, "densidad_media": 1})
     st.dataframe(tabla, hide_index=True, width="stretch")
+
+
+def velocidades(tracks: pd.DataFrame) -> None:
+    if tracks.empty or "velocidad_kmh" not in tracks:
+        return
+    v = tracks[(tracks["clase"] == "vehiculo") & tracks["cruzo_linea"].fillna(False).astype(bool)]
+    v = v.dropna(subset=["velocidad_kmh"])
+    if v.empty:
+        return
+    st.subheader("Velocidad por vehículo")
+    st.caption(
+        "Velocidad de cada vehículo que cruzó el cruce, en km/h (mediana mientras se mueve). "
+        "La escala en metros sale de las franjas de las sendas peatonales: 0,50 m de ancho "
+        "con 0,50 m de separación, según el Manual de Señalamiento Horizontal de Vialidad "
+        "Nacional. Margen estimado: ±5 %."
+    )
+    caja = (
+        alt.Chart(v)
+        .mark_boxplot(extent="min-max", size=40)
+        .encode(
+            x=alt.X("clip_id:N", title=None),
+            y=alt.Y("velocidad_kmh:Q", title="km/h"),
+            color=alt.Color("clip_id:N", legend=None),
+        )
+    )
+    puntos = alt.Chart(v).mark_circle(size=30, opacity=0.5, color="black").encode(
+        x="clip_id:N", y="velocidad_kmh:Q",
+        tooltip=["clip_id", "track_id", "clase_detalle", "color",
+                 alt.Tooltip("velocidad_kmh:Q", format=".0f"),
+                 alt.Tooltip("velocidad_max_kmh:Q", format=".0f")],
+    )  # fmt: skip
+    st.altair_chart(caja + puntos, width="stretch")
 
 
 CALLES = {"av_cordoba": "Córdoba", "rodriguez_pena": "Rodríguez Peña"}

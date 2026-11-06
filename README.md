@@ -37,6 +37,8 @@ Además:
 - **Usa un detector ajustado a esta esquina.** Es `yolov8s` reentrenado con imágenes de
   la propia esquina (fine-tuning): detecta el 88 % de los vehículos contra el 81 % del
   modelo general, y además motos. Ver [docs/entrenamiento.md](docs/entrenamiento.md).
+- **Mide la velocidad en km/h.** La escala en metros sale de las franjas de las sendas
+  peatonales, que tienen medida normalizada. Ver [docs/velocidad.md](docs/velocidad.md).
 - **Arma la matriz de giros:** por dónde entra y por dónde sale cada vehículo, con el
   porcentaje de cada giro y su margen de error. Ver [docs/giros.md](docs/giros.md).
 - **Une los seguimientos cortados.** Cuando algo tapa un objeto un instante, o una
@@ -174,6 +176,7 @@ cumplió del todo.
 |---|---|---|---|
 | Conteo | ±10 % por línea contra conteo manual | ✅ muestra_2: −4.5 %, −5.6 % y 0 %. ⚠️ muestra_3: frente ✅, fondo ✗ (motos). ❌ noche. Cero cruces falsos en los tres clips | [validacion_conteo.md](docs/validacion_conteo.md) |
 | Personas | (fuera del brief) | ⚠️ vereda 4 de 7, ciclovía ~4 de 9. Sin conteos falsos | [validacion_peatones.md](docs/validacion_peatones.md) |
+| Velocidad | (fuera del brief) | ✅ fluido 27–32 km/h de mediana, cola 6 km/h; dos métodos coinciden a ±1,4 km/h; margen ±5 % | [velocidad.md](docs/velocidad.md) |
 | Video original | (fuera del brief) | ✅ iPhone sin WhatsApp: entrada de Córdoba 10/10, salida 15/15. ❌ un colectivo con luces interiores no se detecta | [validacion_video_original.md](docs/validacion_video_original.md) |
 | Color | saturados > 85 %, acromáticos > 65 % | ✅ día 88 % y 76 %; noche 100 % y 71 % con balance de blancos | [validacion_color.md](docs/validacion_color.md) |
 | Sentido contrario | cero falsos positivos | ✅ 0 eventos en 3 clips; la prueba controlada dispara en 81 de 84 cruces | [validacion_alertas.md](docs/validacion_alertas.md) |

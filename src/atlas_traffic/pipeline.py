@@ -42,7 +42,7 @@ from atlas_traffic.correction import (
 )
 from atlas_traffic.counting import anotar_tracks, contar, resumen_conteo
 from atlas_traffic.detect import Detector
-from atlas_traffic.geometry import filtrar_exclusiones
+from atlas_traffic.geometry import dentro_roi, filtrar_exclusiones
 from atlas_traffic.metrics import calcular_intervalos, vehiculos_en_roi
 from atlas_traffic.render import homografias_por_frame
 from atlas_traffic.stabilize import (
@@ -52,7 +52,14 @@ from atlas_traffic.stabilize import (
     transformar_puntos,
 )
 from atlas_traffic.stitching import aplicar_uniones, unir_tracks
+from atlas_traffic.suelo import cargar_calibracion_suelo
 from atlas_traffic.turning import movimientos
+from atlas_traffic.velocidad import (
+    en_suelo,
+    velocidad_kmh,
+    velocidad_por_intervalo,
+    velocidad_por_track,
+)
 
 COLUMNAS_DETECCIONES = [
     "frame", "ts", "track_id", "clase", "clase_detalle", "confianza",
@@ -366,12 +373,24 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
         bordes = np.append(intervalos["t_inicio_s"].to_numpy(), intervalos["t_fin_s"].iat[-1])
         entrante = flujo_entrante(cruces, tasas, luz, bordes)
         intervalos = pd.concat([intervalos, entrante], axis=1).assign(luz=luz)
+        ruta_estab = salida / "estabilizacion.parquet"
+        hs = homografias_por_frame(pd.read_parquet(ruta_estab)) if ruta_estab.exists() else None
+        # velocidad en km/h, si el encuadre tiene calibración métrica del suelo
+        cal_suelo = cargar_calibracion_suelo(cfg.rutas.suelo / f"{geo.encuadre}.yaml")
+        if cal_suelo is not None:
+            veh = en_suelo(det[det["clase"] == "vehiculo"], hs or {}, cal_suelo.homografia)
+            veh = veh.assign(
+                vel_kmh=velocidad_kmh(veh, meta["fps"], cfg.metricas.ventana_velocidad_kmh_s)
+            )
+            # por vehículo, solo dentro de la ROI: lejos, la calle puede tener pendiente o
+            # estar fuera de la zona donde se midieron las sendas
+            en_roi = dentro_roi(geo.roi, veh[["cx_ref", "cy_ref"]].to_numpy())
+            tracks = tracks.merge(velocidad_por_track(veh[en_roi]), on="track_id", how="left")
+            intervalos = pd.concat([intervalos, velocidad_por_intervalo(veh, geo, bordes)], axis=1)
         if cfg.rutas.calibracion.exists():
             intervalos = aplicar(intervalos, geo.encuadre, load_calibracion(cfg.rutas.calibracion))
         intervalos.to_parquet(salida / "intervalos.parquet", index=False)
         eventos = detectar_sentido_contrario(det, geo, cfg.alertas, clip.id, cfg.conteo.margen_px)
-        ruta_estab = salida / "estabilizacion.parquet"
-        hs = homografias_por_frame(pd.read_parquet(ruta_estab)) if ruta_estab.exists() else None
         eventos = guardar_evidencia(clip.archivo, eventos, det, geo, salida / "eventos", hs)
         eventos.to_parquet(salida / "eventos.parquet", index=False)
     else:

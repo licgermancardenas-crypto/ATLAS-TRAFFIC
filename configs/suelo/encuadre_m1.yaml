@@ -1,0 +1,22 @@
+# Calibración métrica del suelo del encuadre encuadre_m1.
+# Generado con scripts/calibrar_suelo.py (ver src/atlas_traffic/suelo.py).
+encuadre: encuadre_m1
+homografia:
+- - -0.2275365615560132
+  - 0.09602669832214102
+  - -12.456631276894425
+- - 0.09678170064435862
+  - 0.42871594923019923
+  - -242.42215939520545
+- - 0.0015153294130983714
+  - -0.010320506916188854
+  - 1.0
+periodo_m: 1.0
+residuo_px: 1.01
+n_franjas: 29
+verificaciones:
+  periodo_medio_m: 0.967
+  periodo_desvio_m: 0.088
+sendas: {}
+notas: Transferida desde encuadre_n1 con las sendas cordoba_frente (desfase 1), cordoba_fondo
+  (desfase -1), rp_izq (desfase 2).

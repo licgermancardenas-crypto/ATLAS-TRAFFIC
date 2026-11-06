@@ -71,6 +71,7 @@ class EstabilizacionCfg(_Modelo):
 class MetricasCfg(_Modelo):
     intervalo_s: int = Field(30, gt=0)
     ventana_velocidad_s: float = Field(0.33, gt=0)  # ventana para medir desplazamiento
+    ventana_velocidad_kmh_s: float = Field(0.5, gt=0)  # idem, para la velocidad en km/h
 
 
 class ColorCfg(_Modelo):
@@ -144,6 +145,7 @@ class RutasCfg(_Modelo):
     clips: Path = Path("configs/clips.yaml")
     calibracion: Path = Path("configs/calibracion.yaml")
     outputs: Path = Path("outputs")
+    suelo: Path = Path("configs/suelo")  # calibración métrica por encuadre (km/h)
 
 
 class AppConfig(_Modelo):
