@@ -59,6 +59,18 @@ homografía, y el conteo trabaja en esas coordenadas fijas.
 - **Video:** el video procesado de cada clip, con las cajas, las líneas, los contadores y
   el nivel de congestión en pantalla, y una leyenda que explica qué es cada cosa. Es una
   grabación ya procesada, no una transmisión en vivo.
+- **Seguir un vehículo:** se hace click sobre el recorrido de un vehículo en la imagen de
+  la esquina (o se lo elige de una lista) y se analiza solo ese vehículo:
+  - un video con una cámara virtual que lo sigue, con zoom automático, su estela y su
+    velocidad en cada momento;
+  - su recorrido visto desde arriba, en metros, coloreado por velocidad;
+  - su velocidad en el tiempo, con los cruces de línea marcados;
+  - una ficha con tipo, color, recorte, por dónde entró y salió, velocidad mediana y
+    máxima, tiempo en escena, tiempo detenido y distancia recorrida.
+
+  Se comparte por URL: `?vista=seguir&clip=muestra_2&vehiculo=134`.
+
+  ![Seguir un vehículo](docs/assets/dashboard_seguir.jpg)
 - **Eventos:** cada alerta de sentido contrario con su recorte al lado.
 - **Consulta:** filtros por clip, fechas, ventana dentro del video, tipo, color, movimiento
   y confianza de color. Muestra el conteo de vehículos únicos, la grilla de recortes y la

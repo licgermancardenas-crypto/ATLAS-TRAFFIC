@@ -10,6 +10,8 @@ summary.parquet (Panorama), eventos_todos.parquet (Eventos) y cruces_todos.parqu
 from __future__ import annotations
 
 import argparse
+import base64
+import json
 import sys
 from pathlib import Path
 
@@ -24,7 +26,11 @@ try:
 except ImportError:  # Streamlit Community Cloud: el paquete no se instala, se usa src/
     sys.path.insert(0, str(RAIZ / "src"))
 
-from atlas_traffic.config import DEFAULT_CONFIG_PATH, load_app_config
+from atlas_traffic.config import (
+    DEFAULT_CONFIG_PATH,
+    EXTENSION_PLANO,
+    load_app_config,
+)
 from atlas_traffic.consulta import (
     ORDEN_CONGESTION,
     Filtro,
@@ -235,6 +241,280 @@ def giros(g: pd.DataFrame) -> None:
     )  # fmt: skip
 
 
+# --------------------------------------------------------------- seguir un vehículo
+
+
+@st.cache_data(show_spinner=False, ttl=30)
+def _parquet(ruta: str) -> pd.DataFrame:
+    return pd.read_parquet(ruta)
+
+
+@st.cache_data(show_spinner=False, ttl=300)
+def _data_uri(ruta: str, recorte_y: tuple[float, float] | None = None) -> str:
+    """Imagen como data URI. `recorte_y`: franja vertical a conservar (fracciones 0-1)."""
+    import io
+
+    from PIL import Image
+
+    img = Image.open(ruta)
+    if recorte_y is not None:
+        alto = img.height
+        img = img.crop((0, round(recorte_y[0] * alto), img.width, round(recorte_y[1] * alto)))
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, format="JPEG", quality=80)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def _fondo(uri: str, ex: alt.Scale, ey: alt.Scale, ancho_px: int, alto_px: int) -> alt.Chart:
+    """Imagen que llena exactamente el área del gráfico (ya recortada a sus límites)."""
+    cx = (ex.domain[0] + ex.domain[1]) / 2
+    cy = (ey.domain[0] + ey.domain[1]) / 2
+    return (
+        alt.Chart(pd.DataFrame({"url": [uri], "x": [cx], "y": [cy]}))
+        .mark_image(
+            width=ancho_px, height=alto_px, aspect=False, align="center", baseline="middle"
+        )  # fmt: skip
+        .encode(
+            x=alt.X("x:Q", scale=ex, axis=None), y=alt.Y("y:Q", scale=ey, axis=None), url="url:N"
+        )  # fmt: skip
+    )
+
+
+def _elegir_vehiculo(
+    tray: pd.DataFrame, carpeta: Path, clave: str, elegido: int | None
+) -> int | None:
+    """Recorridos de todos los vehículos sobre la imagen de la esquina: click para elegir."""
+    meta = json.loads((carpeta / "referencia.json").read_text(encoding="utf-8"))
+    ancho, alto = meta["ancho"], meta["alto"]
+    # se muestra la zona donde hay recorridos (no el cielo ni los edificios)
+    y0 = max(0.0, float(tray["cy_ref"].min()) - 0.05 * alto)
+    y1 = min(float(alto), float(tray["cy_ref"].max()) + 0.05 * alto)
+    escala_x = alt.Scale(domain=[0, ancho], nice=False, zero=False)
+    escala_y = alt.Scale(domain=[y1, y0], nice=False, zero=False)
+    pts = tray.sort_values("ts").groupby("track_id", group_keys=False).nth(slice(None, None, 3))
+    sel = alt.selection_point(
+        name="vehiculo", fields=["track_id"], on="click", nearest=True, empty=False
+    )
+    # resaltado: el vehículo clickeado o el elegido desde la lista
+    activo = sel | (alt.datum.track_id == (elegido if elegido is not None else -1))
+
+    def segun(si, no):
+        return alt.when(activo).then(alt.value(si)).otherwise(alt.value(no))
+
+    color = segun("#ff2d55", "#00d0ff")
+    base = alt.Chart(pts).encode(
+        x=alt.X("cx_ref:Q", scale=escala_x, axis=None),
+        y=alt.Y("cy_ref:Q", scale=escala_y, axis=None),
+    )
+    lineas = base.mark_line().encode(
+        detail="track_id:N",
+        order="ts:Q",
+        color=color,
+        opacity=segun(1.0, 0.45),
+        strokeWidth=segun(5, 2),
+    )
+    puntos = (
+        base.mark_circle(size=40)
+        .encode(
+            color=color,
+            opacity=segun(1.0, 0.25),
+            tooltip=[
+                alt.Tooltip("track_id:N", title="vehículo"),
+                alt.Tooltip("ts:Q", title="segundo", format=".1f"),
+            ],
+        )
+        .add_params(sel)
+    )
+    alto_px = 520
+    ancho_px = int(alto_px * ancho / (y1 - y0))
+    uri = _data_uri(str(carpeta / "referencia.jpg"), (y0 / alto, y1 / alto))
+    fondo = _fondo(uri, escala_x, escala_y, ancho_px, alto_px)
+    grafico = (fondo + lineas + puntos).properties(width=ancho_px, height=alto_px)
+    evento = st.altair_chart(
+        grafico, on_select="rerun", selection_mode="vehiculo", key=clave, width="content"
+    )
+    elegidos = (evento.selection or {}).get("vehiculo") or []
+    return int(elegidos[0]["track_id"]) if elegidos else None
+
+
+def _plano(t: pd.DataFrame, carpeta: Path) -> alt.Chart | None:
+    """Recorrido del vehículo visto desde arriba, en metros, coloreado por velocidad."""
+    from atlas_traffic.seguimiento import recorrido_suavizado
+
+    if "x_m" not in t or not (carpeta / "plano.jpg").exists():
+        return None
+    (x0, x1), (y0, y1) = EXTENSION_PLANO["x"], EXTENSION_PLANO["y"]
+    s = recorrido_suavizado(t)
+    s = s[s["x_m"].between(x0, x1) & s["y_m"].between(y0, y1)]
+    ex = alt.Scale(domain=[x0, x1], nice=False, zero=False)
+    ey = alt.Scale(domain=[y0, y1], nice=False, zero=False)
+    ancho_px = 380
+    alto_px = int(ancho_px * (y1 - y0) / (x1 - x0))
+    fondo = _fondo(_data_uri(str(carpeta / "plano.jpg")), ex, ey, ancho_px, alto_px)
+    base = alt.Chart(s).encode(
+        x=alt.X("x_m:Q", scale=ex, title="metros"), y=alt.Y("y_m:Q", scale=ey, title="metros")
+    )
+    camino = base.mark_line(color="white", strokeWidth=5, opacity=0.6).encode(order="ts:Q")
+    puntos = base.mark_circle(size=55, opacity=1).encode(
+        color=alt.Color(
+            "vel_kmh:Q",
+            title="km/h",
+            scale=alt.Scale(scheme="turbo", domain=[0, 50]),
+            legend=alt.Legend(orient="bottom", gradientLength=200),
+        ),
+        tooltip=[
+            alt.Tooltip("ts:Q", title="segundo", format=".1f"),
+            alt.Tooltip("vel_kmh:Q", title="km/h", format=".0f"),
+        ],
+    )
+    return (fondo + camino + puntos).properties(width=ancho_px, height=alto_px)
+
+
+def _velocidad_en_el_tiempo(t: pd.DataFrame, cruces: pd.DataFrame) -> alt.Chart | None:
+    if "vel_kmh" not in t or t["vel_kmh"].isna().all():
+        return None
+    linea = (
+        alt.Chart(t.dropna(subset=["vel_kmh"]))
+        .mark_line(color="#ff2d55")
+        .encode(
+            x=alt.X("ts:Q", title="segundo del clip"),
+            y=alt.Y("vel_kmh:Q", title="km/h"),
+            tooltip=[alt.Tooltip("ts:Q", format=".1f"), alt.Tooltip("vel_kmh:Q", format=".0f")],
+        )
+    )
+    if cruces.empty:
+        return linea.properties(height=260)
+    marcas = cruces.assign(linea=cruces["aproximacion"] + " (" + cruces["sentido"] + ")")
+    reglas = alt.Chart(marcas).mark_rule(strokeDash=[4, 3], color="gray").encode(x="ts_cruce:Q")
+    textos = (
+        alt.Chart(marcas)
+        .mark_text(angle=270, align="left", dx=4, dy=-4, color="gray")
+        .encode(x="ts_cruce:Q", y=alt.value(250), text="linea:N")
+    )
+    return (linea + reglas + textos).properties(height=260)
+
+
+def _etiqueta_vehiculo(tracks: pd.DataFrame, tid: int) -> str:
+    r = tracks[tracks["track_id"] == tid]
+    if r.empty:
+        return f"#{tid}"
+    r = r.iloc[0]
+    v = r.get("velocidad_kmh")
+    vel = f" · {v:.0f} km/h" if pd.notna(v) else ""
+    color = r.get("color") if isinstance(r.get("color"), str) else "?"
+    return f"#{tid} · {r.get('clase_detalle', '')} · {color}{vel}"
+
+
+def seguir(datos) -> None:
+    from atlas_traffic.seguimiento import ficha_vehiculo
+
+    runs = datos.outputs / "runs"
+    clips = [
+        p.parent.name
+        for p in sorted(runs.glob("*/trayectorias.parquet"))
+        if (p.parent / "referencia.json").exists()
+    ]
+    if not clips:
+        st.info("Todavía no hay recorridos: corré `atlas-traffic batch --render`.")
+        return
+    st.caption(
+        "Hacé click sobre el recorrido de un vehículo para aislarlo: el video lo sigue solo a "
+        "él, y abajo están su recorrido en metros y su velocidad."
+    )
+    pedido = st.query_params.get("clip")
+    clip = st.selectbox(
+        "Clip", clips, index=clips.index(pedido) if pedido in clips else 0, key="seguir_clip"
+    )
+    carpeta = runs / clip
+    vacio = pd.DataFrame(columns=["track_id", "clase", "clip_id"])
+    cruces = datos.cruces[datos.cruces["clip_id"] == clip] if not datos.cruces.empty else vacio
+    con_cruce = set(cruces.loc[cruces["clase"] == "vehiculo", "track_id"].astype(int))
+    tray = _parquet(str(carpeta / "trayectorias.parquet"))
+    tray = tray[tray["track_id"].isin(con_cruce)]
+    if tray.empty:
+        st.info("Este clip no tiene vehículos que hayan cruzado una línea.")
+        return
+    tracks = datos.tracks[datos.tracks["clip_id"] == clip] if not datos.tracks.empty else vacio
+    giros_clip = (
+        datos.giros[datos.giros["clip_id"] == clip] if not datos.giros.empty else (pd.DataFrame())
+    )
+
+    clave = f"veh_{clip}"
+    pedido_v = st.query_params.get("vehiculo")
+    if clave not in st.session_state and pedido_v and pedido_v.isdigit():
+        if int(pedido_v) in con_cruce:
+            st.session_state[clave] = int(pedido_v)
+    izq, der = st.columns([3, 2])
+    with izq:
+        clicado = _elegir_vehiculo(
+            tray, carpeta, clave=f"mapa_{clip}", elegido=st.session_state.get(clave)
+        )
+    # un click nuevo manda; el mismo click en la siguiente recarga no pisa la lista
+    if (
+        clicado is not None
+        and clicado in con_cruce
+        and clicado != st.session_state.get(f"click_{clip}")
+    ):
+        st.session_state[clave] = clicado
+    st.session_state[f"click_{clip}"] = clicado
+    with der:
+        tid = st.selectbox(
+            "…o elegilo de la lista",
+            sorted(con_cruce),
+            key=clave,
+            placeholder="Elegí un vehículo",
+            **({} if clave in st.session_state else {"index": None}),
+            format_func=lambda t: _etiqueta_vehiculo(tracks, t),
+        )
+        if tid is None:
+            st.info("Hacé click sobre un recorrido de la imagen.")
+            return
+        st.query_params.update({"clip": clip, "vehiculo": str(tid)})
+        foco = carpeta / "foco" / f"{tid}.mp4"
+        if foco.exists():
+            st.video(str(foco), autoplay=True, loop=True, muted=True)
+        else:
+            st.caption("Sin video de seguimiento para este vehículo.")
+
+    f = ficha_vehiculo(tid, tray, tracks, cruces, giros_clip)
+    titulo = f"Vehículo #{tid}" + (f" · {f.tipo}" if f.tipo else "")
+    st.subheader(titulo + (f" · {f.color}" if f.color else ""))
+    if f.movimiento:
+        st.markdown(f"**Recorrido:** {f.movimiento}")
+
+    def fmt(v: float, unidad: str) -> str:
+        return "—" if pd.isna(v) else f"{v:.0f} {unidad}"
+
+    m = st.columns(5)
+    m[0].metric("Velocidad (mediana)", fmt(f.velocidad_kmh, "km/h"))
+    m[1].metric("Máxima", fmt(f.velocidad_max_kmh, "km/h"))
+    m[2].metric("En escena", fmt(f.en_escena_s, "s"))
+    m[3].metric("Detenido", fmt(f.detenido_s, "s"))
+    m[4].metric("Recorrió", fmt(f.distancia_m, "m"))
+    t = tray[tray["track_id"] == tid].sort_values("ts")
+    a, b = st.columns([2, 3])
+    with a:
+        plano = _plano(t, carpeta)
+        if plano is not None:
+            st.caption("Recorrido visto desde arriba, en metros (color = velocidad).")
+            st.altair_chart(plano, width="content")
+        foto = _imagen(datos, f.thumb)
+        if foto:
+            st.image(foto, caption="Recorte del vehículo", width=160)
+    with b:
+        grafico = _velocidad_en_el_tiempo(t, f.cruces)
+        if grafico is not None:
+            st.caption("Velocidad en cada momento; las líneas punteadas son los cruces.")
+            st.altair_chart(grafico, width="stretch")
+        if not f.cruces.empty:
+            tabla = f.cruces[["aproximacion", "sentido", "ts_cruce"]].round(1)
+            st.dataframe(
+                tabla.rename(columns={"aproximacion": "línea", "ts_cruce": "segundo"}),
+                hide_index=True,
+                width="stretch",
+            )
+
+
 LEYENDA_VIDEO = """
 **Qué se ve en pantalla**
 
@@ -406,6 +686,7 @@ def main() -> None:
     vistas = {
         "panorama": ("Panorama", lambda: panorama(datos)),
         "video": ("Video", lambda: video(datos)),
+        "seguir": ("Seguir un vehículo", lambda: seguir(datos)),
         "eventos": ("Eventos", lambda: eventos(datos)),
         "consulta": ("Consulta", lambda: consulta(datos, filtro)),
     }

@@ -174,10 +174,36 @@ def _render_presentacion(c, cfg, salida: Path) -> None:
                     fg=typer.colors.YELLOW)  # fmt: skip
     else:
         typer.echo(f"Video para el navegador -> {web} ({web.stat().st_size / 1e6:.1f} MB)")
+    _render_foco(c, cfg, salida, leer)
     r = cfg.render
     gif = gif_desde_video(mp4, salida / "muestra.gif", r.gif_inicio_s, r.gif_duracion_s,
                           r.gif_ancho, r.gif_fps, r.gif_colores)  # fmt: skip
     typer.echo(f"GIF -> {gif} ({gif.stat().st_size / 1e6:.1f} MB)")
+
+
+def _render_foco(c, cfg, salida: Path, leer) -> None:
+    """Plano de la esquina en metros y un video que sigue a cada vehículo que cruzó."""
+    from atlas_traffic.config import load_geometria
+    from atlas_traffic.foco import plano_suelo, videos_foco
+    from atlas_traffic.render import homografias_por_frame
+    from atlas_traffic.suelo import cargar_calibracion_suelo
+
+    tray, cruces = leer("trayectorias.parquet"), leer("cruces.parquet")
+    estab = leer("estabilizacion.parquet")
+    if tray is None or cruces is None:
+        return
+    geo = load_geometria(c.geometria)
+    hs = homografias_por_frame(estab) if estab is not None else {}
+    cal = cargar_calibracion_suelo(cfg.rutas.suelo / f"{geo.encuadre}.yaml")
+    if cal is not None:
+        plano_suelo(c.archivo, hs, tuple(geo.resolucion), cal.homografia, salida / "plano.jpg")
+    veh = cruces[cruces["clase"] == "vehiculo"]
+    primer = veh.sort_values("frame").groupby("track_id")["frame"].first()
+    tray = tray.merge(primer.rename("frame_cruce"), left_on="track_id", right_index=True,
+                      how="left")  # fmt: skip
+    hechos = videos_foco(c.archivo, tray, sorted(int(t) for t in primer.index), salida / "foco")
+    peso = sum(p.stat().st_size for p in hechos) / 1e6
+    typer.echo(f"Videos de foco -> {salida / 'foco'} ({len(hechos)} vehículos, {peso:.1f} MB)")
 
 
 @app.command()

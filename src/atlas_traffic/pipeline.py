@@ -377,6 +377,8 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
         hs = homografias_por_frame(pd.read_parquet(ruta_estab)) if ruta_estab.exists() else None
         # velocidad en km/h, si el encuadre tiene calibración métrica del suelo
         cal_suelo = cargar_calibracion_suelo(cfg.rutas.suelo / f"{geo.encuadre}.yaml")
+        columnas = ["track_id", "frame", "ts", "cx_ref", "cy_ref", "x1", "y1", "x2", "y2"]
+        trayectorias = det.loc[det["clase"] == "vehiculo", columnas]
         if cal_suelo is not None:
             veh = en_suelo(det[det["clase"] == "vehiculo"], hs or {}, cal_suelo.homografia)
             veh = veh.assign(
@@ -387,6 +389,20 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
             en_roi = dentro_roi(geo.roi, veh[["cx_ref", "cy_ref"]].to_numpy())
             tracks = tracks.merge(velocidad_por_track(veh[en_roi]), on="track_id", how="left")
             intervalos = pd.concat([intervalos, velocidad_por_intervalo(veh, geo, bordes)], axis=1)
+            trayectorias = veh[columnas + ["x_m", "y_m", "vel_kmh"]]
+        # para "seguir un vehículo" en el dashboard: recorridos y el cuadro de referencia
+        trayectorias.to_parquet(salida / "trayectorias.parquet", index=False)
+        ref = clip.estabilizacion(cfg.estabilizacion).frame_referencia
+        referencia = leer_frame(clip.archivo, ref)
+        escala_ref = min(1.0, 540 / referencia.shape[1])
+        referencia = cv2.resize(referencia, None, fx=escala_ref, fy=escala_ref,
+                                interpolation=cv2.INTER_AREA)  # fmt: skip
+        cv2.imwrite(str(salida / "referencia.jpg"), referencia, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        # la imagen se achica: el dashboard necesita la resolución original de las coordenadas
+        (salida / "referencia.json").write_text(
+            json.dumps({"ancho": int(geo.resolucion[0]), "alto": int(geo.resolucion[1])}),
+            encoding="utf-8",
+        )
         if cfg.rutas.calibracion.exists():
             intervalos = aplicar(intervalos, geo.encuadre, load_calibracion(cfg.rutas.calibracion))
         intervalos.to_parquet(salida / "intervalos.parquet", index=False)

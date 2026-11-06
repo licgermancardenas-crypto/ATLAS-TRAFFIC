@@ -148,6 +148,12 @@ class RutasCfg(_Modelo):
     suelo: Path = Path("configs/suelo")  # calibración métrica por encuadre (km/h)
 
 
+# Plano de la esquina visto desde arriba (foco.plano_suelo y dashboard): zona que cubre,
+# en metros (X a lo ancho de la avenida, Y a lo largo), y resolución de la imagen.
+EXTENSION_PLANO = {"x": (-10.0, 30.0), "y": (-15.0, 30.0)}
+PX_POR_M_PLANO = 12
+
+
 class AppConfig(_Modelo):
     deteccion: DeteccionCfg = DeteccionCfg()
     video: VideoCfg = VideoCfg()

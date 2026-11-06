@@ -30,6 +30,7 @@ PUERTO = 9233
 # aceptación del brief: autos blancos que entraron por Córdoba entre los segundos 10 y 30.
 VISTAS = {
     "panorama": ("vista=panorama", 1500),
+    "seguir": ("vista=seguir&clip=muestra_2&vehiculo=134", 1750),
     "consulta": (
         "vista=consulta&color=blanco&movimiento=av_cordoba_frente%20%C2%B7%20entrante"
         "&desde=10&hasta=30",

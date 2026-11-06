@@ -103,6 +103,7 @@ def test_cargar_sin_datos(tmp_path):
 
 # --------------------------------------------------------------------------- dashboard real
 
+PESTANAS = ["Panorama", "Video", "Seguir un vehículo", "Eventos", "Consulta"]
 RAIZ = Path(__file__).resolve().parents[1]
 
 
@@ -130,13 +131,13 @@ def test_dashboard_renderiza(tmp_path, monkeypatch, con_datos):
     at = AppTest.from_file(str(RAIZ / "dashboard/app.py"), default_timeout=60).run()
     assert not at.exception, at.exception
     if con_datos:
-        assert [t.label for t in at.tabs] == ["Panorama", "Video", "Eventos", "Consulta"]
+        assert [t.label for t in at.tabs] == PESTANAS
         assert any(m.value == "4" for m in at.metric)  # vehículos de la consulta sin filtros
         assert not any("demostración" in i.value for i in at.info)
     else:
         # sin datos locales: usa los publicados en demo/ (como en Streamlit Cloud)
         assert any("demostración" in i.value for i in at.info)
-        assert [t.label for t in at.tabs] == ["Panorama", "Video", "Eventos", "Consulta"]
+        assert [t.label for t in at.tabs] == PESTANAS
 
 
 def test_dashboard_sin_datos_ni_demo(tmp_path, monkeypatch):

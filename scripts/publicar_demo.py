@@ -33,10 +33,17 @@ def main() -> None:
             continue
         dest = DESTINO / "runs" / corrida.name
         dest.mkdir(parents=True)
-        for archivo in ("conteo.csv", "video_web.mp4"):
+        for archivo in (
+            "conteo.csv",
+            "video_web.mp4",
+            "trayectorias.parquet",
+            "referencia.jpg",
+            "referencia.json",
+            "plano.jpg",
+        ):
             if (corrida / archivo).exists():
                 shutil.copy2(corrida / archivo, dest / archivo)
-        for carpeta in ("thumbs", "eventos"):
+        for carpeta in ("thumbs", "eventos", "foco"):
             if (corrida / carpeta).is_dir():
                 shutil.copytree(corrida / carpeta, dest / carpeta)
                 n_imagenes += len(list((dest / carpeta).glob("*.jpg")))
