@@ -36,14 +36,17 @@ class _Modelo(BaseModel):
 
 class DeteccionCfg(_Modelo):
     detector: str = "ultralytics"  # nombre en el registro de detect.py
-    modelo: str = "yolov8s.pt"  # yolov8s: corrida final (brief); yolov8n para iterar rápido
+    modelo: str = "modelos/atlas_esquina_yolov8s.pt"  # yolov8s ajustado a esta esquina
     dispositivo: str = "cpu"
     confianza_min: float = Field(
         0.1, ge=0.0, le=1.0
     )  # bajo a propósito: ByteTrack re-asocia con las débiles
     iou: float = Field(0.5, ge=0.0, le=1.0)
     tracker: str = "configs/bytetrack.yaml"
-    imgsz: int = Field(640, ge=32, multiple_of=32)  # lado de inferencia; subir ayuda a lo lejano
+    imgsz: int = Field(640, ge=32, multiple_of=32)
+    # Filtro de cajas repetidas sin importar la clase: si el modelo dibuja "auto" y
+    # "camión" sobre la misma camioneta, queda una sola caja (si no, se cuenta doble).
+    nms_agnostico: bool = True  # lado de inferencia; subir ayuda a lo lejano
 
     def kwargs_motor(self) -> dict[str, object]:
         """Argumentos para la fábrica del detector (todo menos el nombre)."""
@@ -92,6 +95,8 @@ class ColorCfg(_Modelo):
 class ConteoCfg(_Modelo):
     # banda muerta alrededor de cada línea: dentro de ±margen el lado no cambia
     margen_px: float = Field(4.0, ge=0.0)
+    # cruzar y volver a cruzar la misma línea en menos de esto es ruido, no un vehículo
+    ida_vuelta_min_s: float = Field(1.0, ge=0.0)
 
 
 class AlertasCfg(_Modelo):
@@ -219,6 +224,11 @@ class Geometria(_Modelo):
     # Zonas de exclusión: objetos fijos de la escena que el detector confunde con
     # vehículos (una marca pintada, el techo de una parada). Ver geometry.filtrar_exclusiones.
     exclusiones: list[list[Punto]] = Field(default_factory=list)
+    # Grupo de normalización de velocidad (congestión). Por defecto cada encuadre se
+    # normaliza solo (brief §4). Encuadres distintos con la misma escala en píxeles (misma
+    # cámara y posición, apenas corrida) pueden compartir grupo: así un encuadre que solo
+    # tiene clips congestionados toma el flujo libre de los demás.
+    grupo_normalizacion: str | None = None
 
     @model_validator(mode="after")
     def _validar(self) -> Geometria:
@@ -254,6 +264,7 @@ class Calibracion(_Modelo):
     """Umbrales de congestión calculados con los propios datos (brief §4)."""
 
     velocidad_p90_por_encuadre: dict[str, float]  # flujo libre de cada vista, en px/frame
+    grupos: dict[str, str] = Field(default_factory=dict)  # encuadre -> grupo de normalización
     densidad: Cortes
     velocidad_norm: Cortes
     generado: dt.datetime | None = None

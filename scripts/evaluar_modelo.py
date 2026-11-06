@@ -5,7 +5,8 @@ que la comparación es justa. Corre el pipeline completo con el modelo indicado 
 carpeta aparte (no pisa outputs/) y compara, línea por línea, con
 docs/validacion_conteo_registros.csv y con el modelo actual.
 
-Uso: python scripts/evaluar_modelo.py modelos/atlas_esquina_yolov8s.pt
+Uso: python scripts/evaluar_modelo.py modelos/atlas_esquina_yolov8s.pt [--reusar]
+     (--reusar: recuenta sobre las detecciones de la corrida anterior, sin volver a detectar)
 """
 
 import subprocess
@@ -19,7 +20,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 VENTANA_S = 20
 
 
-def correr(modelo: Path, etiqueta: str, clips: list[str]) -> Path:
+def correr(modelo: Path, etiqueta: str, clips: list[str], reusar: bool = False) -> Path:
     base = yaml.safe_load((RAIZ / "configs/default.yaml").read_text(encoding="utf-8"))
     salida = RAIZ / "outputs_eval" / etiqueta
     salida.mkdir(parents=True, exist_ok=True)
@@ -30,8 +31,9 @@ def correr(modelo: Path, etiqueta: str, clips: list[str]) -> Path:
     config.write_text(yaml.safe_dump(base, allow_unicode=True), encoding="utf-8")
     for clip in clips:
         print(f"[{etiqueta}] procesando {clip} ({VENTANA_S} s)...", flush=True)
+        extra = ["--reusar-detecciones"] if reusar else []
         subprocess.run([sys.executable, "-m", "atlas_traffic", "run", "--clip", clip,
-                        "--max-segundos", str(VENTANA_S), "--config", str(config)],
+                        "--max-segundos", str(VENTANA_S), "--config", str(config), *extra],
                        check=True, cwd=RAIZ, capture_output=True)  # fmt: skip
     return salida / "runs"
 
@@ -43,10 +45,13 @@ def contar(runs: Path, clip: str) -> pd.DataFrame:
 
 def main() -> None:
     modelo = Path(sys.argv[1])
+    reusar = "--reusar" in sys.argv  # recontar sin volver a detectar (cambios de conteo)
     registros = pd.read_csv(RAIZ / "docs/validacion_conteo_registros.csv")
     clips = sorted(registros["clip_id"].unique())
-    runs_nuevo = correr(modelo, modelo.stem, clips)
-    runs_actual = RAIZ / "outputs" / "runs"  # modelo actual, ya procesado
+    runs_nuevo = correr(modelo, modelo.stem, clips, reusar)
+    # el modelo actual se corre con la misma config, para comparar en igualdad de condiciones
+    base = yaml.safe_load((RAIZ / "configs/default.yaml").read_text(encoding="utf-8"))
+    runs_actual = correr(Path(base["deteccion"]["modelo"]), "actual", clips, reusar)
 
     filas = []
     for r in registros.itertuples():

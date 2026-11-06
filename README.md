@@ -33,7 +33,11 @@ Detectar autos lo hace cualquier tutorial. Esto resuelve cuatro cosas más:
    recorte de evidencia: "autos blancos que entraron por Córdoba entre los segundos 10 y 30"
    se responde en tres clics y se verifica mirando los recortes.
 
-Además, **compensa el movimiento de la cámara.** Los clips están filmados con el teléfono en
+Además:
+- **Usa un detector ajustado a esta esquina.** Es `yolov8s` reentrenado con imágenes de
+  la propia esquina (fine-tuning): detecta el 88 % de los vehículos contra el 81 % del
+  modelo general, y además motos. Ver [docs/entrenamiento.md](docs/entrenamiento.md).
+- **Compensa el movimiento de la cámara.** Los clips están filmados con el teléfono en
 la mano y la vista se corre hasta 130 px. Cada frame se alinea con uno de referencia por
 homografía, y el conteo trabaja en esas coordenadas fijas.
 
@@ -107,7 +111,7 @@ atlas-traffic dashboard
 | `atlas-traffic run --clip <id> [--render] [--debug-video]` | procesa un clip |
 | `atlas-traffic run --clip <id> --reusar-detecciones` | recuenta en segundos, sin volver a correr YOLO (útil al corregir la geometría) |
 | `atlas-traffic calibrate` | recalcula los umbrales de congestión |
-| `... --modelo yolov8n.pt` | modelo chico para iterar rápido (por defecto se usa `yolov8s`, el de la corrida final) |
+| `... --modelo yolov8s.pt` | usa el YOLO general en vez del modelo ajustado a la esquina |
 
 ## Cómo funciona
 
@@ -188,14 +192,14 @@ con **intervalo de confianza del 95 %** (Wilson).
 
 | Clip | Entran al cruce (contados) | Corregido | Intervalo 95 % |
 |---|---|---|---|
-| muestra_2 (día), 0–30 s | 68 veh/min | 72 | 69–81 |
-| muestra_1 (noche) | 24.5 veh/min | 38 | 29–63 |
+| muestra_2 (día), 0–30 s | 72 veh/min | 72 | 72–79 |
+| muestra_1 (noche) | 27 veh/min | 38 | 31–60 |
 
 - **La métrica principal es el flujo que entra al cruce.** Cada vehículo entra una sola
   vez, y la entrada de Córdoba es la línea más cercana a la cámara, donde los vehículos se
   ven grandes.
-- **Cómo leer el margen:** es angosto de día, donde la línea del frente detecta ~95 %, y
-  ancho de noche, donde detecta ~64 % con menos datos de validación.
+- **Cómo leer el margen:** es angosto de día, donde la línea del frente detecta el 100 %
+  de los vehículos de la validación, y ancho de noche, donde detecta ~71 % con menos datos.
 - **Qué queda afuera:** las líneas sin validar no se corrigen y quedan marcadas.
 - **El día o la noche** se detecta solo, por el tinte naranja del alumbrado en la calle, o
   se declara con `luz:` en `clips.yaml`.
@@ -209,17 +213,18 @@ con **intervalo de confianza del 95 %** (Wilson).
   compresión. Fueron filmados con la cámara en mano y cada uno tiene un encuadre distinto.
   El sistema lo compensa, pero los resultados van a mejorar con video original y teléfono
   fijo en la baranda (brief §8).
-- **Peatones:**
-  - Cada línea declara qué cuenta (vehículos o peatones), y hay líneas de peatones
-    sobre las sendas peatonales.
-  - En estos clips el flujo peatonal da 0. Los peatones detectados cerca de las sendas
-    están esperando en la esquina y ninguno cruza mientras los autos tienen verde.
-  - A esta resolución los peatones miden unos 10 px y se siguen solo en tramos cortos,
-    así que el 0 no se puede confirmar del todo a ojo.
-- **Motos:** se pierden, sobre todo lejos de la cámara. En la línea del fondo de
-  muestra_3, los autos dan 5 de 5 pero las motos 0 de 5. Subir la resolución de inferencia
-  a 960 o 1280 px no lo resuelve: con la compresión de WhatsApp las motos lejanas ya
-  perdieron la información.
+- **Personas:**
+  - Cada línea declara qué cuenta (vehículos o personas). Hay líneas de personas sobre
+    las sendas peatonales y sobre las veredas.
+  - En muestra_3 se contaron 6 personas caminando por la vereda de Córdoba. Revisadas a
+    ojo, son todas personas, pero una está contada dos veces porque el seguimiento le
+    cambió el número.
+  - Nadie cruzó la calle por las sendas durante los clips: las personas cercanas esperan
+    en la esquina mientras los autos tienen verde.
+  - No hay todavía un conteo manual de personas para medir el error.
+- **Motos:** el modelo ajustado a la esquina empieza a detectarlas (en el fondo de
+  muestra_3 recupera 2 de 5), pero las lejanas se siguen perdiendo. Subir la resolución
+  de inferencia no lo resuelve: con la compresión de WhatsApp esa información ya se perdió.
 - **Noche:**
   - La detección degrada: el conteo da −36 % y −22 % en las líneas de Córdoba, siempre por
     omisión, sin cruces falsos.

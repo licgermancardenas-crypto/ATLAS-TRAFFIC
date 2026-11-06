@@ -2,12 +2,13 @@
 
 deteccion:
   detector: ultralytics      # nombre en el registro de detect.py (ultralytics | fake)
-  modelo: yolov8s.pt         # corrida final (brief); --modelo yolov8n.pt para iterar rápido
+  modelo: modelos/atlas_esquina_yolov8s.pt  # yolov8s ajustado a esta esquina (fine-tuning)
   dispositivo: cpu
   confianza_min: 0.1        # bajo a propósito: ByteTrack usa las detecciones débiles para re-asociar
   iou: 0.5
   tracker: configs/bytetrack.yaml
   imgsz: 640
+  nms_agnostico: true        # una sola caja por objeto aunque el modelo dude entre auto y camión
 
 video:
   paso_frames: 2             # 1 de cada 2 frames: 60 fps -> 30 fps efectivos
@@ -26,6 +27,7 @@ metricas:
 
 conteo:
   margen_px: 4               # banda muerta: un auto quieto sobre la línea no cuenta cruces
+  ida_vuelta_min_s: 1.0      # cruzar y volver en menos de 1 s es ruido: no cuenta
 
 color:
   max_frames: 10             # frames muestreados por track

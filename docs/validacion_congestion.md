@@ -68,6 +68,34 @@ Con un único p90 para los tres encuadres (1.54 px/frame), la velocidad sí dist
 No se adoptó porque supone que los tres encuadres tienen una escala en píxeles
 comparable. Acá es razonable (mismo balcón, mismo teléfono), pero no está garantizado.
 
+## Solución adoptada: grupo de normalización
+
+Al pasar al modelo ajustado a la esquina, que detecta más vehículos, los umbrales se
+movieron y la cola de muestra_3 pasó a MODERATE. Era el problema de arriba: en ese
+encuadre no hay flujo libre, así que su velocidad "normalizada contra sí misma" parecía
+alta.
+
+**Se agregó a la geometría un grupo de normalización** (`grupo_normalizacion`):
+- Por defecto cada encuadre se normaliza solo, como pide el brief.
+- Encuadres distintos con la misma escala en píxeles (misma cámara y posición, apenas
+  corrida) pueden compartir grupo y, con él, la referencia de flujo libre.
+- Los tres encuadres de muestra son el mismo teléfono en el mismo balcón, así que se
+  declararon del grupo `balcon_cordoba_1680`.
+
+Resultado con el modelo de la esquina (referencia común: 1.38 px/frame):
+
+| Clip | Ventana | Densidad | Velocidad normalizada | Congestión |
+|---|---|---|---|---|
+| muestra_1 | 0–22 s | 4.3 | 0.69 | LOW ✓ |
+| muestra_2 | 0–30 s | 7.8 | 0.93 | LOW ✓ |
+| muestra_2 | 30–50 s | 4.9 | 0.79 | LOW ✓ |
+| muestra_3 | 0–30 s | 22.3 | **0.19** | **HIGH ✓** |
+| muestra_3 | 30–46 s | 25.3 | **0.14** | **HIGH ✓** |
+
+Ahora la velocidad sí discrimina: la cola queda en 0.14–0.19 y el tránsito fluido en
+0.69–0.93. Los umbrales quedan en `configs/calibracion.yaml`, junto con el grupo de cada
+encuadre.
+
 ## Recomendación
 
 Grabar todos los clips con el **mismo encuadre fijo** (brief §8: "menos encuadres, menos

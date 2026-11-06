@@ -56,8 +56,23 @@ lineas:
   sentido_positivo: saliente
   sentido_permitido: ambos
   clases: [peaton]
+- id: vereda_cordoba_edificios
+  puntos:
+  - [5, 545]
+  - [95, 545]
+  sentido_positivo: saliente
+  sentido_permitido: ambos
+  clases: [peaton]
+- id: vereda_cordoba_parada
+  puntos:
+  - [185, 560]
+  - [245, 560]
+  sentido_positivo: saliente
+  sentido_permitido: ambos
+  clases: [peaton]
 exclusiones:
 - - [95, 550]
   - [243, 550]
   - [243, 701]
   - [95, 701]
+grupo_normalizacion: balcon_cordoba_1680

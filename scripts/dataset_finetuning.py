@@ -42,17 +42,16 @@ FRACCION_VAL = 0.25  # tramo final de la parte usable de cada clip
 CONF_MAESTRO = 0.35  # umbral para aceptar una etiqueta del maestro
 
 
-def nms_por_clase(cajas: np.ndarray, conf: np.ndarray, clases: np.ndarray, iou: float = 0.5):
-    """Non-maximum suppression por clase. cajas (N, 4) x1 y1 x2 y2. Devuelve índices."""
-    elegidos = []
-    for c in np.unique(clases):
-        idx = np.nonzero(clases == c)[0]
-        rects = [
-            [float(x1), float(y1), float(x2 - x1), float(y2 - y1)] for x1, y1, x2, y2 in cajas[idx]
-        ]
-        keep = cv2.dnn.NMSBoxes(rects, conf[idx].tolist(), 0.0, iou)
-        elegidos += [int(idx[k]) for k in np.array(keep).reshape(-1)]
-    return sorted(elegidos)
+def nms_agnostico(cajas: np.ndarray, conf: np.ndarray, iou: float = 0.5) -> list[int]:
+    """Non-maximum suppression SIN importar la clase. cajas (N, 4) x1 y1 x2 y2.
+
+    Por clase (como estaba antes) dejaba "auto" y "camión" sobre la misma camioneta, y el
+    modelo entrenado aprendía a dibujar dos cajas por vehículo: se contaba doble. Acá
+    queda una sola caja por objeto, la de mayor confianza (con su clase).
+    """
+    rects = [[float(x1), float(y1), float(x2 - x1), float(y2 - y1)] for x1, y1, x2, y2 in cajas]
+    keep = cv2.dnn.NMSBoxes(rects, conf.tolist(), 0.0, iou)
+    return sorted(int(k) for k in np.array(keep).reshape(-1))
 
 
 def maestro(modelo, frame: np.ndarray, nombres: dict[int, str]):
@@ -81,7 +80,7 @@ def maestro(modelo, frame: np.ndarray, nombres: dict[int, str]):
     if not cajas:
         return np.empty((0, 4)), np.empty(0), np.empty(0, dtype=int)
     cajas, confs, clases = np.array(cajas), np.array(confs), np.array(clases)
-    k = nms_por_clase(cajas, confs, clases)
+    k = nms_agnostico(cajas, confs)
     return cajas[k], confs[k], clases[k]
 
 

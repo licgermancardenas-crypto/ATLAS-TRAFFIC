@@ -72,9 +72,14 @@ def test_contar_sentido_y_conteo_unico():
     det = _det({
         1: [(200, 60), (200, 120)],  # baja: entrante (positivo)
         2: [(200, 140), (200, 60)],  # sube: saliente
-        3: [(200, 60), (200, 120), (200, 60), (200, 120)],  # baja, sube, baja: 1 + 1
     })  # fmt: skip
-    c = contar(det, GEO)
+    # baja, sube y baja otra vez, con 2 s entre cruces (una vuelta real, no un temblor):
+    # cuenta una vez por sentido
+    lento = pd.DataFrame({"frame": [0, 2, 120, 122, 240, 242],
+                          "ts": [0.0, 0.03, 2.0, 2.03, 4.0, 4.03], "track_id": 3,
+                          "clase": "vehiculo", "clase_detalle": "car", "cx_ref": 200.0,
+                          "cy_ref": [60.0, 120.0, 120.0, 60.0, 60.0, 120.0]})  # fmt: skip
+    c = contar(pd.concat([det, lento]), GEO)
     por_track = c.groupby("track_id")["sentido"].apply(sorted).to_dict()
     assert por_track == {1: ["entrante"], 2: ["saliente"], 3: ["entrante", "saliente"]}
 
@@ -147,3 +152,14 @@ def test_cada_linea_cuenta_solo_sus_clases():
     ])  # fmt: skip
     c = contar(det, geo)
     assert set(zip(c.track_id, c.aproximacion, strict=True)) == {(1, "av"), (2, "senda")}
+
+
+def test_ida_y_vuelta_instantanea_no_cuenta():
+    # una caja que cruza y vuelve en ~0.1 s (frames 2 a 8 a 60 fps): ruido, no un vehículo
+    det = _det({1: [(200, 60), (200, 120), (200, 60), (200, 120), (200, 60)]})
+    assert contar(det, GEO).empty
+    # el mismo recorrido lento (cruza, espera 2 s y vuelve) sí cuenta en ambos sentidos
+    lento = pd.DataFrame({"frame": [0, 2, 120, 122], "ts": [0.0, 0.03, 2.0, 2.03],
+                          "track_id": 2, "clase": "vehiculo", "clase_detalle": "car",
+                          "cx_ref": 200.0, "cy_ref": [60.0, 120.0, 120.0, 60.0]})  # fmt: skip
+    assert sorted(contar(lento, GEO)["sentido"]) == ["entrante", "saliente"]

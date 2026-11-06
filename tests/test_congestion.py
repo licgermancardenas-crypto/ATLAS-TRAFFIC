@@ -112,3 +112,42 @@ def test_comando_calibrate_de_punta_a_punta(tmp_path: Path, monkeypatch):
     fluido = pd.read_parquet(tmp_path / "out/runs/fluido/intervalos.parquet")
     assert set(cola["congestion"]) == {"HIGH"}
     assert set(fluido["congestion"]) == {"LOW"}
+
+
+@pytest.mark.parametrize("con_grupo", [True, False])
+def test_grupo_de_normalizacion(tmp_path: Path, monkeypatch, con_grupo):
+    monkeypatch.chdir(tmp_path)
+    linea = {"id": "l", "puntos": [[0, 50], [100, 50]], "sentido_positivo": "entrante"}
+    for enc in ("a", "b"):
+        geo = {"encuadre": enc, "resolucion": [100, 100], "roi": [[0, 0], [100, 0], [100, 100]],
+               "lineas": [linea]}  # fmt: skip
+        if con_grupo:
+            geo["grupo_normalizacion"] = "balcon"
+        Path(f"geo_{enc}.yaml").write_text(yaml.safe_dump(geo), encoding="utf-8")
+    clips = {"clips": [
+        {"id": f"c{enc}", "archivo": f"{enc}.mp4", "fecha": "2026-11-04", "hora_inicio": "12:00",
+         "dia_semana": "miercoles", "tipo_dia": "habil", "clima": "x",
+         "geometria": f"geo_{enc}.yaml"} for enc in ("a", "b")
+    ]}  # fmt: skip
+    Path("clips.yaml").write_text(yaml.safe_dump(clips), encoding="utf-8")
+    Path("default.yaml").write_text(yaml.safe_dump({"rutas": {
+        "clips": "clips.yaml", "calibracion": "cal.yaml", "outputs": "out"}}),
+        encoding="utf-8")  # fmt: skip
+    # el encuadre "b" solo tiene una cola lenta: su flujo libre propio sería engañoso
+    for enc, vmax in (("a", 3.0), ("b", 0.5)):
+        d = tmp_path / "out" / "runs" / f"c{enc}"
+        d.mkdir(parents=True)
+        pd.DataFrame({"clip_id": f"c{enc}", "t_inicio_s": [0], "t_fin_s": [30],
+                      "densidad_media": [5.0], "velocidad_media_px": [vmax / 2],
+                      "congestion": [None]}).to_parquet(d / "intervalos.parquet")  # fmt: skip
+        pd.DataFrame({"vel": np.linspace(0, vmax, 50)}).to_parquet(d / "velocidades_roi.parquet")
+    res = CliRunner().invoke(app, ["calibrate", "--config", "default.yaml"])
+    assert res.exit_code == 0, res.output
+    cal = load_calibracion(tmp_path / "cal.yaml")
+    p90 = cal.velocidad_p90_por_encuadre
+    if con_grupo:
+        assert p90["a"] == p90["b"]  # comparten la referencia de flujo libre
+        assert cal.grupos == {"a": "balcon", "b": "balcon"}
+    else:
+        assert p90["a"] > p90["b"]  # cada encuadre con la suya (brief)
+        assert cal.grupos == {"a": "a", "b": "b"}

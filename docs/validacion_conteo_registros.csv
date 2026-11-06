@@ -1,10 +1,10 @@
 clip_id,linea,luz,manual,automatico,ventana_s,modelo,nota
-muestra_2,av_cordoba_frente,dia,22,21,0-20,yolov8s,
-muestra_2,av_cordoba_fondo,dia,18,17,0-20,yolov8s,
-muestra_2,rodriguez_pena_der,dia,0,0,0-20,yolov8s,
-muestra_3,av_cordoba_frente,dia,18,17,0-20,yolov8s,manual aproximado (cola lenta)
-muestra_3,av_cordoba_fondo,dia,10,5,0-20,yolov8s,5 autos + 5 motos; se pierden las motos
-muestra_3,rodriguez_pena_izq,dia,1,1,0-20,yolov8s,
-muestra_1,av_cordoba_frente,noche,14,9,0-20,yolov8s,manual aproximado (lluvia); tramo derecho fuera de cuadro
-muestra_1,av_cordoba_fondo,noche,23,18,0-20,yolov8s,manual aproximado (reflejos en el asfalto mojado)
-muestra_1,rodriguez_pena_izq,noche,2,1,0-20,yolov8s,
+muestra_2,av_cordoba_frente,dia,22,22,0-20,atlas_esquina_yolov8s,
+muestra_2,av_cordoba_fondo,dia,18,17,0-20,atlas_esquina_yolov8s,
+muestra_2,rodriguez_pena_der,dia,0,0,0-20,atlas_esquina_yolov8s,
+muestra_3,av_cordoba_frente,dia,18,19,0-20,atlas_esquina_yolov8s,manual aproximado (cola lenta)
+muestra_3,av_cordoba_fondo,dia,10,7,0-20,atlas_esquina_yolov8s,5 autos + 5 motos; el modelo de la esquina recupera 2 motos
+muestra_3,rodriguez_pena_izq,dia,2,2,0-20,atlas_esquina_yolov8s,re-verificado: colectivo + auto rojo tapado por un árbol (13.3 s)
+muestra_1,av_cordoba_frente,noche,14,10,0-20,atlas_esquina_yolov8s,manual aproximado (lluvia); tramo derecho fuera de cuadro
+muestra_1,av_cordoba_fondo,noche,23,19,0-20,atlas_esquina_yolov8s,manual aproximado (reflejos en el asfalto mojado)
+muestra_1,rodriguez_pena_izq,noche,2,1,0-20,atlas_esquina_yolov8s,

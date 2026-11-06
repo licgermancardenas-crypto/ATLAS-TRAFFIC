@@ -96,8 +96,18 @@ SENDAS = {
     "encuadre_m3": {
         "senda_cordoba": ((281, 511), (319, 569)),
         "senda_cordoba_fondo": ((188, 404), (212, 436)),  # cruza Córdoba del otro lado
+        # veredas: líneas que atraviesan la vereda de Córdoba del lado de la cámara, donde
+        # se ve caminar a la gente (trayectorias del modelo de la esquina)
+        "vereda_cordoba_edificios": ((5, 545), (95, 545)),
+        "vereda_cordoba_parada": ((185, 560), (245, 560)),
     },
 }
+
+# Los tres encuadres son la misma cámara en el mismo balcón, apenas corrida: misma escala
+# en píxeles. Comparten la referencia de flujo libre para la congestión (ver
+# docs/validacion_congestion.md); si no, el encuadre de la cola (sin flujo libre) queda
+# sesgado hacia LOW.
+GRUPO_NORMALIZACION = "balcon_cordoba_1680"
 
 # Zonas de exclusión: objetos fijos de la escena que el detector toma por vehículos.
 # Cajas medidas con las detecciones de yolov8s (centro +/- 1.15 x semiancho/semialto).
@@ -120,6 +130,7 @@ for encuadre, spec in ENCUADRES.items():
         sentido = "entrante" if lado(provisoria, spec["centro"]) > 0 else "saliente"
         lineas.append(Linea(id=id_, puntos=puntos, sentido_positivo=sentido, clases=["peaton"]))
     geo = Geometria(encuadre=encuadre, resolucion=(464, 832), roi=spec["roi"], lineas=lineas,
-                    exclusiones=EXCLUSIONES.get(encuadre, []))  # fmt: skip
+                    exclusiones=EXCLUSIONES.get(encuadre, []),
+                    grupo_normalizacion=GRUPO_NORMALIZACION)  # fmt: skip
     guardar_geometria(geo, RAIZ / "configs" / "geometria" / f"{encuadre}.yaml")
     print(encuadre, [(ln.id, ln.sentido_positivo) for ln in lineas])

@@ -60,21 +60,31 @@ class ResultadoCalibracion:
 
 def calibrar_dataset(cfg: AppConfig, clips: list[Clip]) -> ResultadoCalibracion:
     intervalos, velocidades, usados, encuadres, omitidos = [], {}, [], {}, []
+    grupos: dict[str, str] = {}
     for c in clips:
         d = _dir_corrida(cfg, c)
         ruta_iv, ruta_vel = d / "intervalos.parquet", d / "velocidades_roi.parquet"
         if not (ruta_iv.exists() and ruta_vel.exists() and c.geometria.exists()):
             omitidos.append(c.id)
             continue
-        enc = load_geometria(c.geometria).encuadre
+        geo = load_geometria(c.geometria)
+        enc = geo.encuadre
+        grupo = geo.grupo_normalizacion or enc
         encuadres[c.id] = enc
-        intervalos.append(pd.read_parquet(ruta_iv).assign(encuadre=enc))
-        velocidades.setdefault(enc, []).append(pd.read_parquet(ruta_vel)["vel"].to_numpy())
+        grupos[enc] = grupo
+        # se calibra por grupo: los encuadres del mismo grupo comparten flujo libre (p90)
+        intervalos.append(pd.read_parquet(ruta_iv).assign(encuadre=grupo))
+        velocidades.setdefault(grupo, []).append(pd.read_parquet(ruta_vel)["vel"].to_numpy())
         usados.append(c.id)
     if not intervalos:
         raise ValueError("no hay clips procesados con geometría: corré `run` o `batch` primero")
     todos = pd.concat(intervalos, ignore_index=True)
     cal = calibrar(todos, {e: np.concatenate(v) for e, v in velocidades.items()}, usados)
+    p90_grupo = cal.velocidad_p90_por_encuadre
+    cal = cal.model_copy(update={
+        "velocidad_p90_por_encuadre": {e: p90_grupo[g] for e, g in grupos.items()},
+        "grupos": dict(grupos),
+    })  # fmt: skip
     save_calibracion(cal, cfg.rutas.calibracion)
     reclasificados = []
     for cid in usados:

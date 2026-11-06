@@ -21,6 +21,11 @@ verificaron mirando los frames originales.
 - Los que la cruzan después del segundo 20 tampoco.
 - Las cuñas negras del barrido son el borde de la imagen cuando la cámara se corre, no vehículos.
 
+> **Actualización:** el detector por defecto ahora es el modelo ajustado a la esquina.
+> Sobre estos mismos 20 s reservados detecta el 88 % de los vehículos, contra el 81 % del
+> `yolov8s` general. Comparación línea por línea en [entrenamiento.md](entrenamiento.md).
+> Las tablas de abajo son de la validación original, con el `yolov8s` general.
+
 ## Resultado — muestra_2 (día, tránsito fluido), primeros 20 s
 
 | Línea | Manual | `yolov8n` | `yolov8s` (actual) | Falsos positivos |

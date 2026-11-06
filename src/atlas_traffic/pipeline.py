@@ -305,7 +305,7 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
     conteo = intervalos = eventos = None
     if clip.geometria.exists():
         geo = load_geometria(clip.geometria)
-        cruces = contar(det, geo, cfg.conteo.margen_px)
+        cruces = contar(det, geo, cfg.conteo.margen_px, cfg.conteo.ida_vuelta_min_s)
         cruces.to_parquet(salida / "cruces.parquet", index=False)
         conteo = resumen_conteo(cruces, geo)
         luz = clip.luz or detectar_luz(leer_frame(clip.archivo, 0))

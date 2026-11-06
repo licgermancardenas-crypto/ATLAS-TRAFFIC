@@ -89,7 +89,21 @@ def cruces_con_indices(
     return cruces
 
 
-def contar(det: pd.DataFrame, geo: Geometria, margen_px: float = 4.0) -> pd.DataFrame:
+def _ida_y_vuelta_instantanea(cruces: list[tuple[int, float, bool]], min_s: float) -> bool:
+    """¿El track cruza la línea y vuelve a cruzarla en menos de `min_s` segundos?
+
+    Ningún vehículo hace eso: es una caja que tiembla sobre la línea (típico de un
+    pedazo de un objeto grande y parcialmente tapado, como un colectivo detrás de un
+    árbol). En ese caso no se cuenta ninguno de los dos cruces. Un auto que cruza y vuelve
+    de verdad (más lento) sigue contando en ambos sentidos, como pide el brief.
+    """
+    tiempos = [t for _, t, _ in cruces]
+    return any(b - a < min_s for a, b in zip(tiempos, tiempos[1:], strict=False))
+
+
+def contar(
+    det: pd.DataFrame, geo: Geometria, margen_px: float = 4.0, ida_vuelta_min_s: float = 1.0
+) -> pd.DataFrame:
     """Un registro por cruce contado (ya aplicada la regla de conteo único)."""
     if det.empty:
         return pd.DataFrame(columns=COLUMNAS_CRUCES)
@@ -110,7 +124,10 @@ def contar(det: pd.DataFrame, geo: Geometria, margen_px: float = 4.0) -> pd.Data
             if clase not in linea.clases:
                 continue  # ej.: un peatón que cruza una línea de calzada no es un vehículo
             vistos: set[bool] = set()
-            for frame, t, positivo in cruces_de_track(frames, ts, xy, linea, margen_px):
+            cruces_linea = cruces_de_track(frames, ts, xy, linea, margen_px)
+            if _ida_y_vuelta_instantanea(cruces_linea, ida_vuelta_min_s):
+                continue
+            for frame, t, positivo in cruces_linea:
                 if positivo in vistos:
                     continue  # una sola vez por línea y sentido
                 vistos.add(positivo)

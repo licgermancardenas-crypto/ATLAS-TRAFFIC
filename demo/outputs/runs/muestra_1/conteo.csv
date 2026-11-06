@@ -1,8 +1,8 @@
 aproximacion,sentido,vehiculo,peaton,tasa_deteccion,vehiculo_corregido,ic_bajo,ic_alto,validada
-av_cordoba_frente,entrante,9,0,0.6428571428571429,13.999999999999998,10.758437799142875,23.217164810825757,True
-av_cordoba_frente,saliente,0,0,0.6428571428571429,0.0,0.0,0.0,True
-av_cordoba_fondo,entrante,0,0,0.782608695652174,0.0,0.0,0.0,True
-av_cordoba_fondo,saliente,19,0,0.782608695652174,24.277777777777775,21.032584327868417,32.70419809387026,True
+av_cordoba_frente,entrante,10,0,0.7142857142857143,14.0,11.327770921725756,22.050271427246013,True
+av_cordoba_frente,saliente,0,0,0.7142857142857143,0.0,0.0,0.0,True
+av_cordoba_fondo,entrante,0,0,0.8260869565217391,0.0,0.0,0.0,True
+av_cordoba_fondo,saliente,20,0,0.8260869565217391,24.210526315789473,21.50044131382116,31.815544995096563,True
 rodriguez_pena_der,entrante,0,0,,0.0,,,False
 rodriguez_pena_der,saliente,0,0,,0.0,,,False
 rodriguez_pena_izq,entrante,0,0,0.5,0.0,0.0,0.0,True

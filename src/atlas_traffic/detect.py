@@ -137,6 +137,7 @@ class UltralyticsDetector:
         iou: float = 0.5,
         tracker: str = "bytetrack.yaml",
         imgsz: int = 640,
+        nms_agnostico: bool = True,
     ) -> None:
         try:
             from ultralytics import YOLO
@@ -152,6 +153,7 @@ class UltralyticsDetector:
             conf=confianza_min,
             iou=iou,
             imgsz=imgsz,
+            agnostic_nms=nms_agnostico,
             device=dispositivo,
             verbose=False,
         )
