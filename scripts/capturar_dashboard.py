@@ -29,13 +29,11 @@ PUERTO = 9233
 # vista -> (parámetros de la URL, alto de la captura). La consulta es la del criterio de
 # aceptación del brief: autos blancos que entraron por Córdoba entre los segundos 10 y 30.
 VISTAS = {
-    "panorama": ("vista=panorama", 1500),
+    "control": ("vista=control", 1250),
+    "alertas": ("vista=alertas", 1100),
+    "buscador": ("vista=buscador&tipo=car&color=blanco&calle=av_cordoba", 1400),
+    "panorama": ("vista=estadisticas", 1500),
     "seguir": ("vista=seguir&clip=muestra_2&vehiculo=134", 1750),
-    "consulta": (
-        "vista=consulta&color=blanco&movimiento=av_cordoba_frente%20%C2%B7%20entrante"
-        "&desde=10&hasta=30",
-        1000,
-    ),
 }
 
 
@@ -55,7 +53,7 @@ async def capturar(ws_url: str, url: str, salida: Path, alto: int) -> None:
         await cdp("Emulation.setDeviceMetricsOverride", width=1400, height=alto,
                   deviceScaleFactor=1, mobile=False)  # fmt: skip
         await cdp("Page.navigate", url=url)
-        await asyncio.sleep(12)  # Streamlit: websocket + gráficos de Vega
+        await asyncio.sleep(20)  # Streamlit: websocket + gráficos de Vega
         res = await cdp("Page.captureScreenshot", format="png")
         salida.write_bytes(base64.b64decode(res["data"]))
 

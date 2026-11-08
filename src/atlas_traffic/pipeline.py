@@ -32,6 +32,7 @@ from atlas_traffic.config import (
     load_calibracion,
     load_geometria,
 )
+from atlas_traffic.conflictos import COLUMNAS_CONFLICTOS, detectar_conflictos
 from atlas_traffic.congestion import aplicar
 from atlas_traffic.correction import (
     calcular_tasas,
@@ -390,6 +391,16 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
             tracks = tracks.merge(velocidad_por_track(veh[en_roi]), on="track_id", how="left")
             intervalos = pd.concat([intervalos, velocidad_por_intervalo(veh, geo, bordes)], axis=1)
             trayectorias = veh[columnas + ["x_m", "y_m", "vel_kmh"]]
+            peatones = _peatones_en_suelo(det, geo, hs or {}, cal_suelo.homografia)
+            peatones.to_parquet(salida / "peatones.parquet", index=False)
+            conflictos = pd.DataFrame(columns=COLUMNAS_CONFLICTOS)
+            if cfg.conflictos.activa:
+                es_peaton = trayectorias["track_id"].isin(peatones["track_id"]).to_numpy()
+                en_zona = trayectorias[en_roi & ~es_peaton]
+                conflictos = detectar_conflictos(en_zona, peatones, cfg.conflictos)
+            conflictos = _evidencia_conflictos(clip.archivo, conflictos, det, salida / "conflictos")
+            conflictos.assign(clip_id=clip.id).to_parquet(salida / "conflictos.parquet",
+                                                          index=False)  # fmt: skip
         # para "seguir un vehículo" en el dashboard: recorridos y el cuadro de referencia
         trayectorias.to_parquet(salida / "trayectorias.parquet", index=False)
         ref = clip.estabilizacion(cfg.estabilizacion).frame_referencia
@@ -408,10 +419,11 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
         intervalos.to_parquet(salida / "intervalos.parquet", index=False)
         eventos = detectar_sentido_contrario(det, geo, cfg.alertas, clip.id, cfg.conteo.margen_px)
         eventos = guardar_evidencia(clip.archivo, eventos, det, geo, salida / "eventos", hs)
+        eventos = _video_eventos(clip.archivo, eventos, det, salida / "eventos")
         eventos.to_parquet(salida / "eventos.parquet", index=False)
     else:
         viejos = ("cruces.parquet", "conteo.csv", "intervalos.parquet", "eventos.parquet",
-                  "giros.parquet")  # fmt: skip
+                  "giros.parquet", "conflictos.parquet", "peatones.parquet")  # fmt: skip
         for viejo in viejos:
             (salida / viejo).unlink(missing_ok=True)
     atributos = extraer_atributos(clip.archivo, det, cfg.color, salida / "thumbs")
@@ -419,3 +431,60 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
     tracks = tracks.merge(atributos, on="track_id", how="left")
     tracks.to_parquet(salida / "tracks.parquet", index=False)
     return ResultadoAnalisis(salida, conteo, intervalos, eventos, tuple(excluidos))
+
+
+def _peatones_en_suelo(det: pd.DataFrame, geo, homografias: dict, H_suelo) -> pd.DataFrame:
+    """Personas (tracks cuya clase más frecuente es peatón), en metros.
+
+    Todo su recorrido, no solo la ROI (que es la calzada): casi todo el tiempo están en la
+    vereda o la senda, y hace falta el recorrido entero para saber si se las siguió bien.
+    """
+    clase = det.groupby("track_id")["clase"].agg(lambda s: s.mode().iat[0])
+    ids = clase[clase == "peaton"].index
+    p = det[det["track_id"].isin(ids) & (det["clase"] == "peaton")]
+    columnas = ["track_id", "frame", "ts", "cx_ref", "cy_ref", "x1", "y1", "x2", "y2"]
+    return en_suelo(p[columnas], homografias, H_suelo)
+
+
+ROJO, AMARILLO = (60, 60, 255), (0, 220, 255)
+
+
+def _evidencia_conflictos(video: Path, conf: pd.DataFrame, det: pd.DataFrame,
+                          carpeta: Path) -> pd.DataFrame:  # fmt: skip
+    """Foto y video corto de cada situación de riesgo (vehículo en rojo, peatón en amarillo)."""
+    from atlas_traffic.foco import video_evidencia
+
+    carpeta.mkdir(parents=True, exist_ok=True)
+    for viejo in [*carpeta.glob("*.jpg"), *carpeta.glob("*.mp4")]:
+        viejo.unlink()
+    conf = conf.assign(thumb=None, video=None)
+    for k, c in conf.iterrows():
+        nombre = f"{int(c['track_id'])}_{int(c['track_id_peaton'])}"
+        a, b = sorted((c["ts"], c["ts_peaton"]))
+        video_evidencia(
+            video, det,
+            [(int(c["track_id"]), ROJO, f"#{int(c['track_id'])} {c['vel_kmh']:.0f} km/h"),
+             (int(c["track_id_peaton"]), AMARILLO, "peaton")],
+            a - 2.0, b + 2.0, c["ts"], carpeta / f"{nombre}.mp4", carpeta / f"{nombre}.jpg",
+        )  # fmt: skip
+        if (carpeta / f"{nombre}.jpg").exists():
+            conf.at[k, "thumb"] = f"{carpeta.name}/{nombre}.jpg"
+        if (carpeta / f"{nombre}.mp4").exists():
+            conf.at[k, "video"] = f"{carpeta.name}/{nombre}.mp4"
+    return conf
+
+
+def _video_eventos(video: Path, eventos: pd.DataFrame, det: pd.DataFrame,
+                   carpeta: Path) -> pd.DataFrame:  # fmt: skip
+    """Video corto de cada evento de sentido contrario (además de la foto)."""
+    from atlas_traffic.foco import video_evidencia
+
+    eventos = eventos.assign(video=None)
+    for k, e in eventos.iterrows():
+        nombre = f"{int(e['track_id'])}_{e['aproximacion']}"
+        mp4 = carpeta / f"{nombre}.mp4"
+        video_evidencia(video, det, [(int(e["track_id"]), ROJO, "contramano")],
+                        e["ts"] - 2.5, e["ts"] + 2.5, e["ts"], mp4, None)  # fmt: skip
+        if mp4.exists():
+            eventos.at[k, "video"] = f"{carpeta.name}/{nombre}.mp4"
+    return eventos

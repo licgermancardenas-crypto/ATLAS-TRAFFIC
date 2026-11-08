@@ -22,7 +22,9 @@ at.run()
 assert not at.exception, [str(e.value) for e in at.exception]
 errores = [e.value for e in at.error]
 assert not errores, errores
-assert len(at.get("video")) == 1, "la pestaña Video no tiene reproductor"
+assert len(at.get("video")) >= 1, "no hay reproductor de video"
+etiquetas = [t.label for t in at.tabs]
+assert any(t.startswith("Alertas") for t in etiquetas), etiquetas
 print("ok")
 """
 

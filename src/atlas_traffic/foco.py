@@ -22,7 +22,7 @@ import pandas as pd
 from atlas_traffic.config import EXTENSION_PLANO, PX_POR_M_PLANO
 from atlas_traffic.suelo import fondo_estabilizado
 
-__all__ = ["plano_suelo", "videos_foco"]
+__all__ = ["plano_suelo", "videos_foco", "video_evidencia"]
 
 
 def plano_suelo(
@@ -52,9 +52,9 @@ def _suavizar(v: np.ndarray, n: int) -> np.ndarray:
 class _Escritor:
     """mp4 H.264 (reproducible en el navegador) escrito cuadro a cuadro por ffmpeg."""
 
-    def __init__(self, ruta: Path, lado: int, fps: float) -> None:
+    def __init__(self, ruta: Path, lado: int, fps: float, alto: int | None = None) -> None:
         cmd = [shutil.which("ffmpeg") or "ffmpeg", "-v", "error", "-y", "-f", "rawvideo",
-               "-pix_fmt", "bgr24", "-s", f"{lado}x{lado}", "-r", f"{fps:.3f}", "-i", "-",
+               "-pix_fmt", "bgr24", "-s", f"{lado}x{alto or lado}", "-r", f"{fps:.3f}", "-i", "-",
                "-c:v", "libx264", "-preset", "veryfast", "-crf", "31", "-pix_fmt", "yuv420p",
                "-movflags", "+faststart", "-an", str(ruta)]  # fmt: skip
         self._p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
@@ -189,3 +189,82 @@ def _cuadro_foco(frame, plan, k, g: pd.DataFrame, lado_px: int, tid: int, fps: f
         cv2.putText(img, f"{fr / fps:.1f} s", (8, lado_px - 8), cv2.FONT_HERSHEY_SIMPLEX,
                     0.45, color, grosor, cv2.LINE_AA)  # fmt: skip
     return img
+
+
+def video_evidencia(
+    video: Path,
+    det: pd.DataFrame,
+    marcas: list[tuple[int, tuple[int, int, int], str]],
+    t0: float,
+    t1: float,
+    t_foto: float,
+    mp4: Path,
+    jpg: Path | None,
+    ancho_px: int = 360,
+) -> None:
+    """Evidencia de una alerta: video corto y foto, recortados alrededor de los involucrados.
+
+    `marcas`: (track_id, color BGR, etiqueta) de cada objeto a marcar. `det`: detecciones
+    con frame, ts, x1..y2 (coordenadas del cuadro). El recorte es fijo (cubre a todos en
+    todo el tramo) para que se entienda el movimiento.
+    """
+    cap = cv2.VideoCapture(str(video))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    ancho, alto = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    ids = [m[0] for m in marcas]
+    tramo = det[det["track_id"].isin(ids) & det["ts"].between(t0, t1)]
+    if tramo.empty:
+        cap.release()
+        return
+    x0, y0 = tramo["x1"].min(), tramo["y1"].min()
+    x1, y1 = tramo["x2"].max(), tramo["y2"].max()
+    # margen y proporción 4:3 (apaisado), dentro del cuadro
+    w = max(x1 - x0, 0.25 * ancho) * 1.5
+    h = max(y1 - y0, w * 0.75)
+    w = max(w, h / 0.75)
+    w, h = min(w, ancho), min(h, alto)
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    ra = int(np.clip(cx - w / 2, 0, ancho - w))
+    rb = int(np.clip(cy - h / 2, 0, alto - h))
+    w, h = int(w), int(h)
+    esc = ancho_px / w
+    alto_px = int(round(h * esc / 2)) * 2
+    por_track = {tid: g.sort_values("frame") for tid, g in tramo.groupby("track_id")}
+    f0, f1, f_foto = (int(round(t * fps)) for t in (t0, t1, t_foto))
+    mp4.parent.mkdir(parents=True, exist_ok=True)
+    if jpg is not None:
+        jpg.parent.mkdir(parents=True, exist_ok=True)
+    escritor = _Escritor(mp4, ancho_px, fps / 2, alto_px)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, f0)
+    try:
+        for fr in range(f0, f1 + 1):
+            ok, frame = cap.read()
+            if not ok:
+                break
+            if (fr - f0) % 2 and fr != f_foto:
+                continue
+            img = cv2.resize(frame[rb : rb + h, ra : ra + w], (ancho_px, alto_px),
+                             interpolation=cv2.INTER_CUBIC)  # fmt: skip
+            for tid, color, etiqueta in marcas:
+                g = por_track.get(tid)
+                if g is None:
+                    continue
+                k = (g["frame"] - fr).abs().to_numpy()
+                if k.min() > 6:
+                    continue
+                d = g.iloc[int(k.argmin())]
+                p1 = (int((d["x1"] - ra) * esc), int((d["y1"] - rb) * esc))
+                p2 = (int((d["x2"] - ra) * esc), int((d["y2"] - rb) * esc))
+                cv2.rectangle(img, p1, p2, color, 2, cv2.LINE_AA)
+                cv2.putText(img, etiqueta, (p1[0], max(12, p1[1] - 4)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA)  # fmt: skip
+            for color, grosor in (((0, 0, 0), 3), ((255, 255, 255), 1)):
+                cv2.putText(img, f"{fr / fps:.1f} s", (6, alto_px - 8),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, grosor, cv2.LINE_AA)  # fmt: skip
+            if fr == f_foto and jpg is not None:
+                cv2.imwrite(str(jpg), img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            if (fr - f0) % 2 == 0:
+                escritor.escribir(img)
+    finally:
+        cap.release()
+        escritor.cerrar()

@@ -5,6 +5,7 @@ Cuatro archivos de configuración, cuatro modelos:
 - configs/clips.yaml        -> ClipsFile       (registro de clips, ver clips.py)
 - configs/geometria/*.yaml  -> Geometria       (ROI y líneas de conteo por encuadre)
 - configs/calibracion.yaml  -> Calibracion     (umbrales de congestión, generado)
+- configs/camaras.yaml      -> CamarasFile     (dónde está cada cámara: calle, barrio, límites)
 
 Todos usan extra="forbid": un typo en el YAML es un error, no un campo ignorado.
 """
@@ -123,6 +124,25 @@ class AlertasCfg(_Modelo):
     frames_limpios: int = Field(3, ge=1)
 
 
+class ConflictosCfg(_Modelo):
+    """Situaciones de riesgo entre vehículos y peatones (ver conflictos.py)."""
+
+    activa: bool = True
+    radio_m: float = Field(2.0, gt=0)  # el vehículo pasa a menos de esto del peatón
+    pet_max_s: float = Field(3.0, gt=0)  # tiempo entre que pasa uno y pasa el otro
+    vel_min_kmh: float = Field(8.0, ge=0)  # el vehículo tiene que estar circulando
+    desplazamiento_min_m: float = Field(10.0, ge=0)  # descarta objetos fijos de la vereda
+    # el peatón tiene que estar bien seguido: una detección suelta de un instante suele ser
+    # un poste o un reflejo (validado a ojo: ver docs/conflictos.md)
+    peaton_min_s: float = Field(1.0, ge=0)
+    peaton_min_detecciones: int = Field(15, ge=1)
+    # el peatón tiene que estar en la calzada: un lugar por donde pasan vehículos
+    calzada_radio_m: float = Field(1.5, gt=0)
+    calzada_min_vehiculos: int = Field(3, ge=1)
+    grave_s: float = Field(1.0, gt=0)  # menos de 1 s entre uno y otro: grave
+    moderado_s: float = Field(2.0, gt=0)  # 1 a 2 s: moderado; 2 a pet_max_s: leve
+
+
 class CorreccionCfg(_Modelo):
     """Corrección de conteos por tasa de detección (ver correction.py)."""
 
@@ -146,6 +166,7 @@ class RutasCfg(_Modelo):
     calibracion: Path = Path("configs/calibracion.yaml")
     outputs: Path = Path("outputs")
     suelo: Path = Path("configs/suelo")  # calibración métrica por encuadre (km/h)
+    camaras: Path = Path("configs/camaras.yaml")  # ubicación de cada cámara
 
 
 # Plano de la esquina visto desde arriba (foco.plano_suelo y dashboard): zona que cubre,
@@ -163,6 +184,7 @@ class AppConfig(_Modelo):
     conteo: ConteoCfg = ConteoCfg()
     union: UnionCfg = UnionCfg()
     alertas: AlertasCfg = AlertasCfg()
+    conflictos: ConflictosCfg = ConflictosCfg()
     correccion: CorreccionCfg = CorreccionCfg()
     render: RenderCfg = RenderCfg()
     rutas: RutasCfg = RutasCfg()
@@ -286,6 +308,38 @@ class Geometria(_Modelo):
         if len(ids) != len(set(ids)):
             raise ValueError(f"ids de línea repetidos en {self.encuadre}")
         return self
+
+
+# --------------------------------------------------------------------------- camaras.yaml
+
+
+class Camara(_Modelo):
+    """Una cámara (un punto fijo de la ciudad) y los encuadres que se grabaron desde ahí."""
+
+    id: str = Field(min_length=1)
+    nombre: str
+    direccion: str
+    barrios: list[str] = Field(min_length=1)  # los que se ven en la imagen
+    comunas: list[str] = Field(default_factory=list)
+    lat: float
+    lon: float
+    encuadres: list[str] = Field(min_length=1)
+    # calle (prefijo de las líneas de conteo: av_cordoba, rodriguez_pena) -> nombre visible
+    calles: dict[str, str] = Field(default_factory=dict)
+    # calle -> velocidad máxima permitida (km/h)
+    limites_kmh: dict[str, float] = Field(default_factory=dict)
+
+
+class CamarasFile(_Modelo):
+    camaras: list[Camara] = Field(default_factory=list)
+
+    def de_encuadre(self, encuadre: str | None) -> Camara | None:
+        return next((c for c in self.camaras if encuadre in c.encuadres), None)
+
+
+def load_camaras(path: Path) -> CamarasFile:
+    path = Path(path)
+    return CamarasFile.model_validate(read_yaml(path)) if path.exists() else CamarasFile()
 
 
 # --------------------------------------------------------------------------- calibracion.yaml

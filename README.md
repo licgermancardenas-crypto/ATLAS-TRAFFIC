@@ -8,8 +8,10 @@ Pipeline de visión por computadora que analiza el tránsito de una bocacalle fi
 un balcón (Av. Córdoba y Rodríguez Peña, CABA):
 - cuenta vehículos **una sola vez y por aproximación**;
 - clasifica la **congestión por densidad + velocidad**;
-- detecta **circulación en sentido contrario**;
-- consolida varios clips en un dataset que se puede consultar vehículo por vehículo.
+- detecta **circulación en sentido contrario**, **riesgo peatonal** y **exceso de
+  velocidad**, con foto y video de evidencia;
+- consolida varios clips en un dataset que se puede consultar vehículo por vehículo;
+- lo muestra todo en un **centro de monitoreo** con buscador de vehículos.
 
 <p align="center">
   <img src="docs/assets/demo.gif" width="300" alt="Demo: conteo por aproximación con cola de autos (HIGH)">
@@ -39,6 +41,9 @@ Además:
   modelo general, y además motos. Ver [docs/entrenamiento.md](docs/entrenamiento.md).
 - **Mide la velocidad en km/h.** La escala en metros sale de las franjas de las sendas
   peatonales, que tienen medida normalizada. Ver [docs/velocidad.md](docs/velocidad.md).
+- **Detecta situaciones de riesgo peatonal:** un vehículo que pasa a menos de 2 m del
+  lugar de un peatón en la calzada, con menos de 3 s de diferencia (PET, el indicador
+  estándar de seguridad vial). Ver [docs/conflictos.md](docs/conflictos.md).
 - **Arma la matriz de giros:** por dónde entra y por dónde sale cada vehículo, con el
   porcentaje de cada giro y su margen de error. Ver [docs/giros.md](docs/giros.md).
 - **Une los seguimientos cortados.** Cuando algo tapa un objeto un instante, o una
@@ -48,17 +53,30 @@ Además:
 la mano y la vista se corre hasta 130 px. Cada frame se alinea con uno de referencia por
 homografía, y el conteo trabaja en esas coordenadas fijas.
 
-## Dashboard
+## Dashboard: centro de monitoreo vial
 
-| Panorama | Consulta |
-|---|---|
-| ![Panorama](docs/assets/dashboard_panorama.png) | ![Consulta: autos blancos que entraron por Córdoba entre los segundos 10 y 30](docs/assets/dashboard_consulta.png) |
+![Centro de control](docs/assets/dashboard_control.jpg)
 
-- **Panorama:** flujo, densidad y velocidad por intervalo; hábil contra fin de semana;
-  congestión por franja horaria; tabla de clips.
-- **Video:** el video procesado de cada clip, con las cajas, las líneas, los contadores y
-  el nivel de congestión en pantalla, y una leyenda que explica qué es cada cosa. Es una
-  grabación ya procesada, no una transmisión en vivo.
+Tema oscuro de sala de control, con el estado del sistema arriba. Es un análisis de
+grabaciones ya procesadas, no una transmisión en vivo, y lo dice en pantalla.
+
+- **Centro de control:**
+  - indicadores: cámaras, vehículos, peatones, alertas, velocidad p85 y congestión;
+  - mapa con la ubicación de la cámara, sus barrios y las velocidades máximas;
+  - la última grabación analizada y las últimas alertas;
+  - actividad en el tiempo.
+- **Alertas:** riesgo peatonal, sentido contrario y exceso de velocidad en una sola lista,
+  con gravedad (grave, moderada, leve) y filtros. Cada alerta tiene su evidencia en foto y
+  video, y un link para seguir a ese vehículo.
+- **Buscador:** encuentra vehículos por:
+  - tipo, color y velocidad mínima;
+  - calle, barrio, rango de horas del día y fechas;
+  - grabación, línea y sentido, y confianza del color.
+
+  Cada resultado es una ficha con foto, hora exacta, calle y sentido, y un link para
+  seguirlo. Las búsquedas se comparten por URL, por ejemplo
+  `?vista=buscador&tipo=car&color=blanco&calle=av_cordoba&hora_desde=19:00&hora_hasta=20:00`.
+  La marca y la patente no se pueden leer con la resolución de estos videos.
 - **Seguir un vehículo:** se hace click sobre el recorrido de un vehículo en la imagen de
   la esquina (o se lo elige de una lista) y se analiza solo ese vehículo:
   - un video con una cámara virtual que lo sigue, con zoom automático, su estela y su
@@ -69,13 +87,26 @@ homografía, y el conteo trabaja en esas coordenadas fijas.
     máxima, tiempo en escena, tiempo detenido y distancia recorrida.
 
   Se comparte por URL: `?vista=seguir&clip=muestra_2&vehiculo=134`.
+- **Cámaras:** el video procesado de cada grabación, con cajas, líneas, contadores y
+  congestión en pantalla, y una leyenda.
+- **Estadísticas:**
+  - flujo, densidad y velocidad por intervalo;
+  - velocidades por vehículo y matriz de giros;
+  - conteo por aproximación con margen de error;
+  - tabla de grabaciones.
 
-  ![Seguir un vehículo](docs/assets/dashboard_seguir.jpg)
-- **Eventos:** cada alerta de sentido contrario con su recorte al lado.
-- **Consulta:** filtros por clip, fechas, ventana dentro del video, tipo, color, movimiento
-  y confianza de color. Muestra el conteo de vehículos únicos, la grilla de recortes y la
-  descarga a CSV. Cualquier consulta se comparte por URL, por ejemplo
-  `?vista=consulta&color=blanco&desde=10&hasta=30`.
+| Alertas con evidencia | Buscador |
+|---|---|
+| ![Alertas](docs/assets/dashboard_alertas.jpg) | ![Buscador: autos blancos en Av. Córdoba](docs/assets/dashboard_buscador.jpg) |
+
+| Seguir un vehículo | Estadísticas |
+|---|---|
+| ![Seguir un vehículo](docs/assets/dashboard_seguir.jpg) | ![Estadísticas](docs/assets/dashboard_panorama.jpg) |
+
+La ubicación de cada cámara está en `configs/camaras.yaml`: dirección, barrios, comunas,
+coordenadas y velocidad máxima de cada calle. La ubicación y los barrios se verificaron con
+el normalizador de direcciones del GCBA (USIG). Av. Córdoba es el límite entre San Nicolás
+y Recoleta, así que la esquina aparece en los dos barrios.
 
 **Online:** https://atlas-traffic.streamlit.app — el dashboard se publica en Streamlit
 Community Cloud desde este repo
@@ -191,6 +222,7 @@ cumplió del todo.
 | Velocidad | (fuera del brief) | ✅ fluido 27–32 km/h de mediana, cola 6 km/h; dos métodos coinciden a ±1,4 km/h; margen ±5 % | [velocidad.md](docs/velocidad.md) |
 | Video original | (fuera del brief) | ✅ iPhone sin WhatsApp: entrada de Córdoba 10/10, salida 15/15. ❌ un colectivo con luces interiores no se detecta | [validacion_video_original.md](docs/validacion_video_original.md) |
 | Color | saturados > 85 %, acromáticos > 65 % | ✅ día 88 % y 76 %; noche 100 % y 71 % con balance de blancos | [validacion_color.md](docs/validacion_color.md) |
+| Riesgo peatonal | (fuera del brief) | ⚠️ 8 candidatos revisados a ojo: 7 falsos (postes, reflejos, gente esperando en el cordón) descartados con filtros; queda 1 real (leve, PET 2,7 s) | [conflictos.md](docs/conflictos.md) |
 | Sentido contrario | cero falsos positivos | ✅ 0 eventos en 3 clips; la prueba controlada dispara en 81 de 84 cruces | [validacion_alertas.md](docs/validacion_alertas.md) |
 | Congestión | congestionado = HIGH, liviano = LOW, sin ajuste manual | ✅ con la salvedad del supuesto de flujo libre | [validacion_congestion.md](docs/validacion_congestion.md) |
 | Batch | un comando reprocesa todo | ✅ 3 clips en 577 s | — |

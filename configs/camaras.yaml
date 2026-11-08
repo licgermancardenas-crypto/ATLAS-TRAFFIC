@@ -1,0 +1,19 @@
+# Cámaras: dónde está cada una. La usan el centro de control y el buscador del dashboard.
+# Ubicación y barrios verificados con el normalizador de direcciones de USIG (GCBA):
+# Av. Córdoba es el límite entre San Nicolás (Comuna 1, vereda par) y Recoleta (Comuna 2).
+
+camaras:
+  - id: cordoba_rodriguez_pena
+    nombre: Av. Córdoba y Rodríguez Peña
+    direccion: Av. Córdoba 1680, CABA
+    barrios: [San Nicolás, Recoleta]
+    comunas: ["1", "2"]
+    lat: -34.599563
+    lon: -58.391560
+    encuadres: [encuadre_m1, encuadre_m2, encuadre_m3, encuadre_n1]
+    calles:
+      av_cordoba: Av. Córdoba
+      rodriguez_pena: Rodríguez Peña
+    limites_kmh:              # Ley 24.449, art. 51 (zona urbana): avenidas 60, calles 40
+      av_cordoba: 60
+      rodriguez_pena: 40

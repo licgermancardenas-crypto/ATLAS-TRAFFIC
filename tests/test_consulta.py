@@ -97,13 +97,68 @@ def test_panorama():
     assert c.loc["a", "duracion_s"] == 50.0 and c.loc["b", "congestion"] == "LOW"
 
 
+def test_buscador_hora_calle_y_velocidad():
+    c = _cruces().assign(
+        hora=pd.to_datetime(["2026-11-04 08:00:05", "2026-11-04 08:00:09",
+                             "2026-11-04 19:30:00", "2026-11-04 23:50:00",
+                             "2026-11-08 00:10:00"]),
+        aproximacion=["av_cordoba_frente", "av_cordoba_fondo", "rodriguez_pena_izq",
+                      "av_cordoba_frente", "av_cordoba_frente"],
+        velocidad_kmh=[30.0, 30.0, 55.0, 20.0, None],
+        encuadre=["m1", "m1", "m1", "m1", "n1"],
+    )  # fmt: skip
+    franja = consultar(c, Filtro(franja=(dt.time(19, 0), dt.time(20, 0))))
+    assert list(franja.track_id) == [2]
+    # franja que cruza la medianoche
+    noche = consultar(c, Filtro(franja=(dt.time(23, 0), dt.time(1, 0))))
+    assert sorted(zip(noche.clip_id, noche.track_id, strict=True)) == [("a", 3), ("b", 1)]
+    assert list(consultar(c, Filtro(calles=["rodriguez_pena"])).track_id) == [2]
+    assert list(consultar(c, Filtro(velocidad_min_kmh=50)).track_id) == [2]
+    assert list(consultar(c, Filtro(encuadres=["n1"])).clip_id) == ["b"]
+
+
+def test_alertas_unificadas():
+    from atlas_traffic.consulta import Datos, alertas
+
+    hora = pd.Timestamp("2026-11-04 08:00")
+    eventos = pd.DataFrame({"clip_id": ["a"], "track_id": [3], "ts": [40.0],
+                            "aproximacion": ["frente"], "sentido": ["saliente"],
+                            "clase_detalle": ["bus"], "thumb": [None],
+                            "hora": [hora + pd.Timedelta(seconds=40)]})  # fmt: skip
+    conflictos = pd.DataFrame({"clip_id": ["a"], "track_id": [2], "track_id_peaton": [9],
+                               "ts": [20.0], "pet_s": [0.6], "vel_kmh": [30.0],
+                               "primero": ["peaton"], "gravedad": ["grave"],
+                               "hora": [hora + pd.Timedelta(seconds=20)]})  # fmt: skip
+    cruces = _cruces().assign(clase="vehiculo", hora=hora,
+                              aproximacion="av_cordoba_frente")  # fmt: skip
+    tracks = pd.DataFrame({"clip_id": ["a", "a"], "track_id": [1, 2],
+                           "velocidad_max_kmh": [75.0, 40.0], "encuadre": ["m1", "m1"],
+                           "thumb": [None, None]})  # fmt: skip
+    datos = Datos(summary=pd.DataFrame(), tracks=tracks, cruces=cruces, eventos=eventos,
+                  outputs=Path("."), conflictos=conflictos)  # fmt: skip
+    al = alertas(datos, {"m1": {"av_cordoba": 60.0}})
+    assert sorted(al["tipo"]) == ["Exceso de velocidad", "Riesgo peatonal", "Sentido contrario"]
+    exceso = al[al["tipo"] == "Exceso de velocidad"].iloc[0]
+    assert exceso["track_id"] == 1 and exceso["gravedad"] == "moderado"  # 15 km/h de más
+    assert al["ts"].iat[0] == 40.0  # la más reciente primero
+    assert len(alertas(datos)) == 2  # sin límites no hay alertas de velocidad
+
+
 def test_cargar_sin_datos(tmp_path):
     assert cargar(tmp_path).vacio
 
 
 # --------------------------------------------------------------------------- dashboard real
 
-PESTANAS = ["Panorama", "Video", "Seguir un vehículo", "Eventos", "Consulta"]
+PESTANAS = ["Centro de control", "Alertas", "Buscador", "Seguir un vehículo", "Cámaras",
+            "Estadísticas"]  # fmt: skip
+
+
+def _sin_contador(etiquetas):
+    # "Alertas (3)" -> "Alertas"
+    return [t.split(" (")[0] for t in etiquetas]
+
+
 RAIZ = Path(__file__).resolve().parents[1]
 
 
@@ -131,13 +186,14 @@ def test_dashboard_renderiza(tmp_path, monkeypatch, con_datos):
     at = AppTest.from_file(str(RAIZ / "dashboard/app.py"), default_timeout=60).run()
     assert not at.exception, at.exception
     if con_datos:
-        assert [t.label for t in at.tabs] == PESTANAS
+        assert _sin_contador(t.label for t in at.tabs) == PESTANAS
+        assert "Alertas (1)" in [t.label for t in at.tabs]  # el evento de contramano
         assert any(m.value == "4" for m in at.metric)  # vehículos de la consulta sin filtros
         assert not any("demostración" in i.value for i in at.info)
     else:
         # sin datos locales: usa los publicados en demo/ (como en Streamlit Cloud)
         assert any("demostración" in i.value for i in at.info)
-        assert [t.label for t in at.tabs] == PESTANAS
+        assert _sin_contador(t.label for t in at.tabs) == PESTANAS
 
 
 def test_dashboard_sin_datos_ni_demo(tmp_path, monkeypatch):
@@ -179,6 +235,8 @@ def test_dashboard_vista_directa(tmp_path, monkeypatch):
     at.query_params["hasta"] = "30"
     at.run()
     assert not at.exception, at.exception
-    assert len(at.tabs) == 0 and at.header[0].value == "Consulta"
+    # "consulta" es el nombre viejo del buscador: los links compartidos siguen andando
+    assert len(at.tabs) == 0 and at.header[0].value == "Buscador"
     # la consulta del criterio, armada solo desde la URL: (a,1) y (b,1)
+    assert not at.error, [e.value for e in at.error]
     assert [m.value for m in at.metric if "filtro" in m.label] == ["2"]

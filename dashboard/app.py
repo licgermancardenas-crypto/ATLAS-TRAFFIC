@@ -1,16 +1,18 @@
-"""Dashboard de ATLAS Traffic (Fase 7).
+"""ATLAS · Centro de Monitoreo Vial: dashboard de seguridad, control y monitoreo.
 
 Uso:  atlas-traffic dashboard          (o: streamlit run dashboard/app.py -- --config X)
 
-Lee los consolidados que genera `atlas-traffic batch` en outputs/:
-summary.parquet (Panorama), eventos_todos.parquet (Eventos) y cruces_todos.parquet
-(Consulta). La lógica de datos vive en atlas_traffic.consulta; acá solo hay interfaz.
+Pestañas: Centro de control (estado, mapa, últimas alertas), Alertas (con evidencia),
+Buscador (vehículos por tipo, color, calle, barrio y hora), Seguir un vehículo, Cámaras
+y Estadísticas. Lee los consolidados que genera `atlas-traffic batch` en outputs/; la
+lógica de datos vive en atlas_traffic.consulta y acá solo hay interfaz.
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import datetime as dt
 import json
 import sys
 from pathlib import Path
@@ -29,11 +31,16 @@ except ImportError:  # Streamlit Community Cloud: el paquete no se instala, se u
 from atlas_traffic.config import (
     DEFAULT_CONFIG_PATH,
     EXTENSION_PLANO,
+    CamarasFile,
     load_app_config,
+    load_camaras,
 )
 from atlas_traffic.consulta import (
     ORDEN_CONGESTION,
+    ORDEN_GRAVEDAD,
     Filtro,
+    alertas,
+    calle_de_linea,
     cargar,
     congestion_por_franja,
     consultar,
@@ -557,37 +564,276 @@ def video(datos) -> None:
         st.markdown(LEYENDA_VIDEO)
 
 
-def eventos(datos) -> None:
-    e = datos.eventos
-    st.caption("Circulación en sentido contrario. Cada evento se verifica mirando el recorte.")
-    if e.empty:
-        st.success("No hay eventos de sentido contrario en los clips procesados.")
+# --------------------------------------------------------------------------- estilo
+
+ESTILO = """
+<style>
+.block-container {padding-top: 3.4rem;}
+[data-testid="stMetricValue"] {font-size: 1.75rem;}
+[class*="st-key-ficha"] img {height: 120px; object-fit: cover; border-radius: 6px;}
+.atlas-header {display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;
+  gap:10px; background:linear-gradient(90deg,#0f1b30,#0a101c); border:1px solid #1f2d44;
+  border-radius:12px; padding:14px 20px; margin-bottom:6px;}
+.atlas-logo {font-weight:800; letter-spacing:.12em; font-size:1.35rem; color:#e6edf7;}
+.atlas-logo span {color:#00c2ff;}
+.atlas-sub {color:#8aa0bd; font-size:.82rem; letter-spacing:.04em;}
+.atlas-chips {display:flex; flex-wrap:wrap; gap:6px;}
+.chip {display:inline-flex; align-items:center; gap:6px; padding:4px 11px; border-radius:999px;
+  background:#13213a; border:1px solid #23395c; color:#cfe0f5; font-size:.76rem;}
+.dot {width:8px; height:8px; border-radius:50%; background:#2ecc71; box-shadow:0 0 8px #2ecc71;}
+.dot.ambar {background:#ffb020; box-shadow:0 0 8px #ffb020;}
+[data-testid="stMetric"] {background:#111a2b; border:1px solid #1f2d44; border-radius:10px;
+  padding:10px 14px;}
+[data-testid="stMetricLabel"] p {text-transform:uppercase; letter-spacing:.06em;
+  font-size:.72rem !important; color:#8aa0bd;}
+.badge {display:inline-block; padding:1px 8px; border-radius:6px; font-size:.7rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:.05em;}
+.badge.grave {background:#ff2d55; color:#fff;}
+.badge.moderado {background:#ff9f1c; color:#14181f;}
+.badge.leve {background:#ffd166; color:#14181f;}
+.alerta {border-left:4px solid #ff2d55; background:#111a2b; border-radius:8px; padding:8px 12px;
+  margin-bottom:6px;}
+.alerta.moderado {border-left-color:#ff9f1c;} .alerta.leve {border-left-color:#ffd166;}
+.alerta .t {font-weight:700; color:#e6edf7;} .alerta .d {color:#9fb2cc; font-size:.82rem;}
+.panel-titulo {text-transform:uppercase; letter-spacing:.1em; font-size:.74rem; color:#8aa0bd;
+  margin:4px 0 6px 0;}
+.ficha {font-size:.82rem; color:#cfe0f5; line-height:1.35;}
+.ficha b {color:#fff;}
+</style>
+"""
+
+GRAVEDAD = {"grave": "Grave", "moderado": "Moderada", "leve": "Leve"}
+TIPOS_VEHICULO = {"car": "Auto", "truck": "Camión", "bus": "Colectivo", "motorcycle": "Moto",
+                  "bicycle": "Bicicleta", "person": "Persona"}  # fmt: skip
+SENTIDOS = {"entrante": "entra al cruce", "saliente": "sale del cruce"}
+
+
+def _tipo(c) -> str:
+    return TIPOS_VEHICULO.get(c, str(c))
+
+
+def _hora(h) -> str:
+    return "—" if pd.isna(h) else f"{pd.Timestamp(h):%d/%m/%Y %H:%M:%S}"
+
+
+def _camaras(cfg) -> CamarasFile:
+    for ruta in (cfg.rutas.camaras, RAIZ / "configs" / "camaras.yaml"):
+        if Path(ruta).exists():
+            return load_camaras(Path(ruta))
+    return CamarasFile()
+
+
+def _limites(camaras: CamarasFile) -> dict[str, dict[str, float]]:
+    return {e: dict(c.limites_kmh) for c in camaras.camaras for e in c.encuadres}
+
+
+def _nombre_calle(camaras: CamarasFile, calle: str) -> str:
+    for c in camaras.camaras:
+        if calle in c.calles:
+            return c.calles[calle]
+    return _calle(calle + "_x")
+
+
+def _link_seguir(clip: str, tid) -> str:
+    return f"?vista=seguir&clip={clip}&vehiculo={int(tid)}"
+
+
+def encabezado(datos, camaras: CamarasFile) -> None:
+    s = datos.summary
+    n_clips = s["clip_id"].nunique()
+    ultimo = pd.to_datetime(s["inicio"]).max() if "inicio" in s else None
+    n_cam = max(1, len(camaras.camaras))
+    act = f"Último registro {pd.Timestamp(ultimo):%d/%m/%Y %H:%M}" if pd.notna(ultimo) else ""
+    st.html(f"""
+    <div class="atlas-header">
+      <div>
+        <div class="atlas-logo">ATLAS <span>·</span> CENTRO DE MONITOREO VIAL</div>
+        <div class="atlas-sub">Seguridad, control y análisis de tránsito con visión artificial</div>
+      </div>
+      <div class="atlas-chips">
+        <span class="chip"><span class="dot"></span>Sistema operativo</span>
+        <span class="chip">{n_cam} cámara{"s" if n_cam > 1 else ""}</span>
+        <span class="chip">{n_clips} grabaciones procesadas</span>
+        <span class="chip"><span class="dot ambar"></span>Modo diferido (no es en vivo)</span>
+        <span class="chip">{act}</span>
+      </div>
+    </div>""")
+
+
+# --------------------------------------------------------------------------- centro de control
+
+
+def _tarjeta_alerta(a, compacta: bool = False) -> str:
+    g = a["gravedad"]
+    detalle = "" if compacta else f'<div class="d">{a["detalle"]}</div>'
+    return (f'<div class="alerta {g}"><span class="badge {g}">{GRAVEDAD.get(g, g)}</span> '
+            f'<span class="t">{a["tipo"]}</span>'
+            f'<div class="d">{_hora(a["hora"])} · {a["clip_id"]} · vehículo #{int(a["track_id"])}'
+            f'</div>{detalle}</div>')  # fmt: skip
+
+
+def centro_de_control(datos, camaras: CamarasFile, al: pd.DataFrame) -> None:
+    c = datos.cruces
+    veh = c[c["clase"] == "vehiculo"] if "clase" in c else c
+    pea = c[c["clase"] == "peaton"] if "clase" in c else c.iloc[0:0]
+    graves = int((al["gravedad"] == "grave").sum()) if not al.empty else 0
+    t = datos.tracks
+    p85 = None
+    if not t.empty and "velocidad_kmh" in t:
+        v = t[t["clase"] == "vehiculo"] if "clase" in t else t
+        v = v["velocidad_kmh"].dropna()
+        p85 = float(v.quantile(0.85)) if len(v) else None
+    k = st.columns(6)
+    k[0].metric("Cámaras", max(1, len(camaras.camaras)),
+                help=f"{datos.summary['clip_id'].nunique()} grabaciones procesadas")  # fmt: skip
+    k[1].metric("Vehículos", veh.drop_duplicates(["clip_id", "track_id"]).shape[0],
+                help="Vehículos que cruzaron una línea de conteo")  # fmt: skip
+    k[2].metric("Peatones", pea.drop_duplicates(["clip_id", "track_id"]).shape[0],
+                help="Personas que cruzaron una senda peatonal")  # fmt: skip
+    k[3].metric("Alertas", len(al), help=f"{graves} graves")
+    k[4].metric("km/h p85", "—" if p85 is None else f"{p85:.0f}",
+                help="Velocidad que no supera el 85 % de los vehículos")  # fmt: skip
+    niv = datos.summary["congestion"].dropna()
+    k[5].metric("Congestión", niv.mode().iat[0] if len(niv) else "—",
+                help="Nivel más frecuente en los intervalos de 30 s")  # fmt: skip
+
+    izq, medio, der = st.columns([1.1, 1.6, 1.3])
+    with izq:
+        st.html('<div class="panel-titulo">Mapa de cámaras</div>')
+        if camaras.camaras:
+            pts = pd.DataFrame([{"lat": cam.lat, "lon": cam.lon} for cam in camaras.camaras])
+            st.map(pts, latitude="lat", longitude="lon", size=25, color="#00c2ff", zoom=15,
+                   height=260)  # fmt: skip
+            for cam in camaras.camaras:
+                lim = " · ".join(f"{cam.calles.get(calle, calle)} {v:.0f} km/h"
+                                 for calle, v in cam.limites_kmh.items())  # fmt: skip
+                st.html(f'<div class="ficha"><b>{cam.nombre}</b><br>{cam.direccion}<br>'
+                        f'Barrios: {", ".join(cam.barrios)} · Comunas {", ".join(cam.comunas)}'
+                        f'<br>Máximas: {lim}</div>')  # fmt: skip
+        else:
+            st.caption("Sin cámaras registradas (configs/camaras.yaml).")
+    with medio:
+        videos = sorted((datos.outputs / "runs").glob("*/video_web.mp4"))
+        st.html('<div class="panel-titulo">Última grabación analizada</div>')
+        if videos:
+            orden = datos.summary.groupby("clip_id")["inicio"].min() if "inicio" in \
+                datos.summary else pd.Series(dtype=object)  # fmt: skip
+            por_clip = {v.parent.name: v for v in videos}
+            candidatos = [cl for cl in orden.sort_values(ascending=False).index if cl in por_clip]
+            clip = candidatos[0] if candidatos else next(iter(por_clip))
+            st.video(str(por_clip[clip]), autoplay=True, loop=True, muted=True)
+            st.caption(f"{clip} · grabación procesada, no es una transmisión en vivo")
+        else:
+            st.info("Sin videos procesados: `atlas-traffic batch --render`.")
+    with der:
+        st.html('<div class="panel-titulo">Últimas alertas</div>')
+        if al.empty:
+            st.success("Sin alertas en las grabaciones procesadas.")
+        else:
+            st.html("".join(_tarjeta_alerta(a, compacta=True) for _, a in al.head(6).iterrows()))
+            st.caption("Detalle y evidencia en la pestaña Alertas.")
+
+    st.html('<div class="panel-titulo">Actividad</div>')
+    a, b = st.columns([3, 2])
+    with a:
+        s = datos.summary
+        if "inicio" in s and "flujo_veh_min" in s:
+            st.altair_chart(alt.Chart(s).mark_line(point=True).encode(
+                x=alt.X("inicio:T", title="hora"), y=alt.Y("flujo_veh_min:Q", title="veh/min"),
+                color=alt.Color("clip_id:N", title="grabación"),
+                tooltip=["clip_id", alt.Tooltip("inicio:T", format="%d/%m %H:%M:%S"),
+                         alt.Tooltip("flujo_veh_min:Q", format=".1f"), "congestion"],
+            ).properties(height=230, title="Vehículos por minuto"), width="stretch")  # fmt: skip
+    with b:
+        if not al.empty:
+            st.altair_chart(alt.Chart(al).mark_bar().encode(
+                y=alt.Y("tipo:N", title=None), x=alt.X("count():Q", title="alertas"),
+                color=alt.Color("gravedad:N", scale=COLOR_GRAVEDAD, title="gravedad"),
+                tooltip=["tipo", "gravedad", "count()"],
+            ).properties(height=230, title="Alertas por tipo"), width="stretch")  # fmt: skip
+        else:
+            st.caption("Sin alertas para graficar.")
+
+
+COLOR_GRAVEDAD = alt.Scale(domain=["grave", "moderado", "leve"],
+                           range=["#ff2d55", "#ff9f1c", "#ffd166"])  # fmt: skip
+
+
+# --------------------------------------------------------------------------- alertas
+
+EXPLICACION_ALERTAS = """
+- **Riesgo peatonal:** un vehículo pasa a menos de 2 m del lugar donde está (o estuvo) un
+  peatón en la calzada, con menos de 3 s de diferencia (*PET*, indicador estándar de
+  seguridad vial). Grave: menos de 1 s · moderada: 1 a 2 s · leve: 2 a 3 s.
+- **Sentido contrario:** un vehículo cruza una línea en el sentido no permitido.
+- **Exceso de velocidad:** velocidad del vehículo (percentil 90 de su recorrido) por encima
+  de la máxima de la calle (Ley 24.449: avenidas 60 km/h, calles 40 km/h). Margen ±5 %.
+
+Cada alerta guarda su evidencia: foto y video corto con el vehículo marcado en rojo y el
+peatón en amarillo. Las alertas se revisan a ojo antes de actuar.
+"""
+
+
+def alertas_vista(datos, al: pd.DataFrame) -> None:
+    with st.expander("Qué genera cada alerta"):
+        st.markdown(EXPLICACION_ALERTAS)
+    if al.empty:
+        st.success("No hay alertas en las grabaciones procesadas.")
         return
-    c1, c2 = st.columns(2)
-    clips = c1.multiselect("Clip", sorted(e["clip_id"].unique()), placeholder="Todos")
-    aprox = c2.multiselect("Aproximación", sorted(e["aproximacion"].unique()), placeholder="Todas")
+    f1, f2, f3 = st.columns(3)
+    tipos = f1.multiselect("Tipo", sorted(al["tipo"].unique()), placeholder="Todos")
+    grav = f2.multiselect("Gravedad", [g for g in ORDEN_GRAVEDAD if g in set(al["gravedad"])],
+                          format_func=GRAVEDAD.get, placeholder="Todas")  # fmt: skip
+    clips = f3.multiselect("Grabación", sorted(al["clip_id"].unique()), placeholder="Todas")
+    a = al
+    if tipos:
+        a = a[a["tipo"].isin(tipos)]
+    if grav:
+        a = a[a["gravedad"].isin(grav)]
     if clips:
-        e = e[e["clip_id"].isin(clips)]
-    if aprox:
-        e = e[e["aproximacion"].isin(aprox)]
-    st.write(f"**{len(e)}** eventos")
-    for r in e.sort_values(["clip_id", "ts"]).itertuples():
-        img, info = st.columns([1, 3])
-        ruta = _imagen(datos, r.thumb)
-        if ruta:
-            img.image(ruta, width="stretch")
-        info.markdown(
-            f"**{r.clip_id}** · track {r.track_id} · {r.clase_detalle}  \n"
-            f"{r.aproximacion} → {r.sentido} (no permitido)  \n"
-            f"segundo {r.ts:.1f} · {pd.Timestamp(r.hora):%d/%m %H:%M:%S}"
-        )
-        st.divider()
+        a = a[a["clip_id"].isin(clips)]
+    m = st.columns(4)
+    m[0].metric("Alertas", len(a))
+    for col, g in zip(m[1:], ORDEN_GRAVEDAD, strict=True):
+        col.metric(GRAVEDAD[g], int((a["gravedad"] == g).sum()))
+    if a.empty:
+        st.info("Ninguna alerta cumple el filtro.")
+        return
+    a = a.reset_index(drop=True)
+    lista, evidencia = st.columns([3, 2])
+    clave = "alerta_elegida"
+    if st.session_state.get(clave, 0) >= len(a):
+        st.session_state[clave] = 0
+    with lista:
+        for i, r in a.head(50).iterrows():
+            foto, texto, boton = st.columns([1, 4, 1])
+            ruta = _imagen(datos, r["thumb"])
+            if ruta:
+                foto.image(ruta, width="stretch")
+            texto.html(_tarjeta_alerta(r))
+            if boton.button("Ver", key=f"ver_alerta_{i}", width="stretch"):
+                st.session_state[clave] = i
+    with evidencia:
+        r = a.iloc[st.session_state.get(clave, 0)]
+        st.html('<div class="panel-titulo">Evidencia</div>')
+        st.html(_tarjeta_alerta(r))
+        video = datos.outputs / r["video"] if isinstance(r["video"], str) else None
+        if video is not None and video.exists():
+            st.video(str(video), autoplay=True, loop=True, muted=True)
+        else:
+            ruta = _imagen(datos, r["thumb"])
+            if ruta:
+                st.image(ruta, width="stretch")
+        st.markdown(f"[Seguir a este vehículo →]({_link_seguir(r['clip_id'], r['track_id'])})")
+
+
+# --------------------------------------------------------------------------- buscador
 
 
 def _de_url(clave: str, opciones: list[str]) -> list[str]:
     """Valores iniciales de un filtro tomados de la URL (?color=blanco&color=rojo).
 
-    Permite compartir una consulta con un link. Valores que no existen se ignoran.
+    Permite compartir una búsqueda con un link. Valores que no existen se ignoran.
     """
     return [v for v in st.query_params.get_all(clave) if v in opciones]
 
@@ -599,64 +845,113 @@ def _numero_de_url(clave: str, defecto: float) -> float:
         return defecto
 
 
-def filtros_consulta(datos) -> Filtro:
+def _hora_de_url(clave: str, defecto: dt.time) -> dt.time:
+    try:
+        return dt.time.fromisoformat(st.query_params.get(clave, ""))
+    except ValueError:
+        return defecto
+
+
+def filtros_busqueda(datos, camaras: CamarasFile) -> Filtro:
     c = datos.cruces
-    sb = st.sidebar
-    sb.header("Consulta")
-    sb.caption("Los filtros también se pueden pasar por URL para compartir una consulta: "
-               "`?vista=consulta&color=blanco&desde=10&hasta=30`")  # fmt: skip
+    st.caption(
+        "Buscá vehículos por cómo son y por dónde y cuándo pasaron. Los criterios se pueden "
+        "pasar por URL para compartir una búsqueda: "
+        "`?vista=buscador&color=blanco&tipo=car&hora_desde=19:00&hora_hasta=20:00`"
+    )
 
-    def multi(etiqueta: str, clave: str, opciones: list[str], **kw) -> list[str]:
-        return sb.multiselect(etiqueta, opciones, default=_de_url(clave, opciones),
-                              placeholder="Todos", **kw)  # fmt: skip
+    def multi(col, etiqueta, clave, opciones, **kw):
+        return col.multiselect(etiqueta, opciones, default=_de_url(clave, opciones),
+                               placeholder="Todos", key=f"b_{clave}", **kw)  # fmt: skip
 
-    clips = multi("Clip", "clip", sorted(c["clip_id"].unique()))
-    fechas = pd.to_datetime(c["fecha"]).dt.date
-    rango_fechas = None
-    if fechas.nunique() > 1:
-        rango_fechas = sb.date_input("Rango de fechas", (fechas.min(), fechas.max()))
-        if not isinstance(rango_fechas, tuple) or len(rango_fechas) != 2:
-            rango_fechas = None
-    t_max = float(c["ts_cruce"].max()) if not c.empty else 60.0
-    tope = float(max(1, round(t_max + 1)))  # float: el slider no acepta tipos mezclados
-    desde = min(max(0.0, _numero_de_url("desde", 0.0)), tope)
-    hasta = min(max(desde, _numero_de_url("hasta", tope)), tope)
-    segundos = sb.slider("Ventana dentro del video (s)", 0.0, tope, (desde, hasta), step=1.0)
-    clases = multi("Tipo de vehículo", "tipo", sorted(c["clase_detalle"].dropna().unique()))
-    colores = multi("Color", "color", sorted(c["color"].dropna().unique()))
-    movimientos = multi(
-        "Movimiento", "movimiento", movimientos_disponibles(c),
-        help="Aproximación y sentido del cruce. Ej.: av_cordoba_frente · entrante",
-    )  # fmt: skip
-    conf = sb.slider("Confianza mínima de color", 0.0, 1.0,
-                     min(1.0, max(0.0, _numero_de_url("confianza", 0.0))), 0.05)  # fmt: skip
-    return Filtro(clips=clips, fechas=rango_fechas, segundos=segundos, clases=clases,
+    with st.container(border=True):
+        st.html('<div class="panel-titulo">Vehículo</div>')
+        a, b, d = st.columns(3)
+        tipos = multi(a, "Tipo", "tipo", sorted(c["clase_detalle"].dropna().unique()),
+                      format_func=_tipo)  # fmt: skip
+        colores = multi(b, "Color", "color", sorted(c["color"].dropna().unique()))
+        vel_min = d.number_input("Velocidad mínima (km/h)", 0, 150,
+                                 int(_numero_de_url("vel", 0)), step=5, key="b_vel",
+                                 help="0 = cualquiera")  # fmt: skip
+        st.html('<div class="panel-titulo">Lugar y momento</div>')
+        a, b, d, e = st.columns(4)
+        es_veh = c["clase"] == "vehiculo" if "clase" in c else pd.Series(True, index=c.index)
+        lineas_veh = c.loc[es_veh, "aproximacion"].dropna()
+        calles_disp = sorted({calle_de_linea(x) for x in lineas_veh})
+        calles = multi(a, "Calle", "calle", calles_disp,
+                       format_func=lambda x: _nombre_calle(camaras, x))  # fmt: skip
+        barrios_disp = sorted({br for cam in camaras.camaras for br in cam.barrios})
+        barrios = multi(b, "Barrio", "barrio", barrios_disp)
+        h_desde = d.time_input("Desde (hora)", _hora_de_url("hora_desde", dt.time(0, 0)),
+                               key="b_hora_desde", step=60)  # fmt: skip
+        h_hasta = e.time_input("Hasta (hora)", _hora_de_url("hora_hasta", dt.time(23, 59)),
+                               key="b_hora_hasta", step=60)  # fmt: skip
+        fechas = pd.to_datetime(c["fecha"]).dt.date
+        rango_fechas = None
+        if fechas.nunique() > 1:
+            rango_fechas = st.date_input("Fechas", (fechas.min(), fechas.max()), key="b_fechas")
+            if not isinstance(rango_fechas, tuple) or len(rango_fechas) != 2:
+                rango_fechas = None
+        with st.expander("Más criterios"):
+            x, y = st.columns(2)
+            clips = multi(x, "Grabación", "clip", sorted(c["clip_id"].unique()))
+            movimientos = multi(
+                y, "Línea y sentido", "movimiento", movimientos_disponibles(c),
+                help="Aproximación y sentido del cruce. Ej.: av_cordoba_frente · entrante",
+            )  # fmt: skip
+            t_max = float(c["ts_cruce"].max()) if not c.empty else 60.0
+            tope = float(max(1, round(t_max + 1)))  # float: el slider no acepta tipos mezclados
+            desde = min(max(0.0, _numero_de_url("desde", 0.0)), tope)
+            hasta = min(max(desde, _numero_de_url("hasta", tope)), tope)
+            segundos = x.slider("Segundo dentro de la grabación", 0.0, tope, (desde, hasta),
+                                step=1.0, key="b_segundos")  # fmt: skip
+            conf = y.slider("Confianza mínima de color", 0.0, 1.0,
+                            min(1.0, max(0.0, _numero_de_url("confianza", 0.0))), 0.05,
+                            key="b_confianza")  # fmt: skip
+    encuadres = [e for cam in camaras.camaras if set(cam.barrios) & set(barrios)
+                 for e in cam.encuadres]  # fmt: skip
+    if barrios and not encuadres:
+        encuadres = ["(ninguno)"]
+    franja = None if (h_desde, h_hasta) == (dt.time(0, 0), dt.time(23, 59)) else (h_desde, h_hasta)
+    return Filtro(clips=clips, fechas=rango_fechas, segundos=segundos, clases=tipos,
                   colores=colores, movimientos=[parsear_movimiento(m) for m in movimientos],
-                  confianza_color_min=conf)  # fmt: skip
+                  confianza_color_min=conf, franja=franja, calles=calles, encuadres=encuadres,
+                  velocidad_min_kmh=float(vel_min))  # fmt: skip
 
 
-def consulta(datos, filtro: Filtro) -> None:
+def buscador(datos, camaras: CamarasFile) -> None:
     if datos.cruces.empty:
         st.info("No hay cruces consolidados: corré `atlas-traffic batch`.")
         return
+    filtro = filtros_busqueda(datos, camaras)
     res = consultar(datos.cruces, filtro)
     c1, c2 = st.columns([3, 1])
     c1.metric("Vehículos que cumplen el filtro", len(res))
-    c2.download_button("Descargar CSV", para_csv(res), "consulta_atlas_traffic.csv",
-                       "text/csv", width="stretch")  # fmt: skip
+    c2.download_button("Descargar CSV", para_csv(res), "busqueda_atlas.csv", "text/csv",
+                       width="stretch")  # fmt: skip
     if res.empty:
-        st.info("Ningún vehículo cumple el filtro.")
+        st.info("Ningún vehículo cumple los criterios.")
         return
-    st.caption("Recortes de evidencia (filtros en la barra lateral). Cada uno es un vehículo.")
+    st.caption(
+        "Cada ficha es un vehículo, con el primer cruce que cumple la búsqueda. La marca y "
+        "la patente no se pueden leer con la resolución de estos videos."
+    )
     filas = [res.iloc[i : i + COLUMNAS_GRILLA] for i in range(0, len(res), COLUMNAS_GRILLA)]
     for fila in filas[:20]:
         cols = st.columns(COLUMNAS_GRILLA)
         for col, r in zip(cols, fila.itertuples(), strict=False):
-            ruta = _imagen(datos, r.thumb)
-            if ruta:
-                col.image(ruta, width="stretch")
-            col.caption(f"{r.clip_id} · {r.track_id}  \n{r.color} · {r.ts_cruce:.1f} s  \n"
-                        f"{r.aproximacion} {r.sentido}")  # fmt: skip
+            with col.container(border=True, key=f"ficha_{r.clip_id}_{r.track_id}"):
+                ruta = _imagen(datos, r.thumb)
+                if ruta:
+                    st.image(ruta, width="stretch")
+                vel = getattr(r, "velocidad_kmh", None)
+                vel = f" · {vel:.0f} km/h" if vel is not None and pd.notna(vel) else ""
+                calle = _nombre_calle(camaras, calle_de_linea(r.aproximacion))
+                st.html(f'<div class="ficha"><b>#{r.track_id} · {_tipo(r.clase_detalle)}</b>'
+                        f' · {r.color}{vel}<br>{_hora(getattr(r, "hora", None))}<br>{calle} · '
+                        f'{SENTIDOS.get(r.sentido, r.sentido)}<br>'
+                        f'<a href="{_link_seguir(r.clip_id, r.track_id)}" target="_self">'
+                        f'Seguir →</a></div>')  # fmt: skip
     if len(filas) > 20:
         st.caption(f"Mostrando 120 de {len(res)}. El CSV tiene todos.")
     with st.expander("Tabla"):
@@ -666,32 +961,60 @@ def consulta(datos, filtro: Filtro) -> None:
 # --------------------------------------------------------------------------- main
 
 
+def barra_lateral(camaras: CamarasFile) -> None:
+    sb = st.sidebar
+    sb.markdown("### ATLAS · Monitoreo vial")
+    for cam in camaras.camaras:
+        sb.markdown(f"**{cam.nombre}**  \n{cam.direccion}  \n{', '.join(cam.barrios)}")
+    sb.divider()
+    sb.markdown(
+        "**Qué hace el sistema**\n\n"
+        "- Detecta y sigue vehículos y peatones\n"
+        "- Cuenta por calle y sentido, y mide velocidad en km/h\n"
+        "- Genera alertas con evidencia (foto y video)\n"
+        "- Permite buscar vehículos por tipo, color, calle y hora"
+    )
+    sb.caption(
+        "Fuente: grabaciones procesadas (no es una transmisión en vivo). Los recortes son "
+        "de baja resolución: no permiten leer patentes ni ver caras."
+    )
+
+
 def main() -> None:
-    st.set_page_config(page_title="ATLAS Traffic", layout="wide")
-    st.title("ATLAS Traffic")
+    st.set_page_config(page_title="ATLAS · Monitoreo vial", page_icon="🛰️", layout="wide")
+    st.html(ESTILO)
     cfg = load_app_config(_config_path())
     datos = _cargar(str(cfg.rutas.outputs.resolve()))
+    demo = False
     if datos.vacio and (DEMO / "summary.parquet").exists():
         # sin datos locales (por ejemplo, en la nube): se muestran los publicados
         datos = _cargar(str(DEMO))
+        demo = True
+    if datos.vacio:
+        st.title("ATLAS · Centro de Monitoreo Vial")
+        st.warning("No hay datos consolidados en outputs/. Corré `atlas-traffic batch` primero.")
+        st.stop()
+    camaras = _camaras(cfg)
+    encabezado(datos, camaras)
+    if demo:
         st.info("Datos de demostración: tres clips de 23 a 50 s enviados por WhatsApp "
                 "(464 × 832) y uno de 25 s con el video original del iPhone. Ver limitaciones "
                 "en el README del repositorio.")  # fmt: skip
-    if datos.vacio:
-        st.warning("No hay datos consolidados en outputs/. Corré `atlas-traffic batch` primero.")
-        st.stop()
-    st.caption("Av. Córdoba y Rodríguez Peña, CABA — conteo por aproximación, congestión "
-               "por densidad + velocidad, consulta por vehículo.")  # fmt: skip
-    filtro = filtros_consulta(datos)
+    barra_lateral(camaras)
+    al = alertas(datos, _limites(camaras))
     vistas = {
-        "panorama": ("Panorama", lambda: panorama(datos)),
-        "video": ("Video", lambda: video(datos)),
+        "control": ("Centro de control", lambda: centro_de_control(datos, camaras, al)),
+        "alertas": (f"Alertas ({len(al)})", lambda: alertas_vista(datos, al)),
+        "buscador": ("Buscador", lambda: buscador(datos, camaras)),
         "seguir": ("Seguir un vehículo", lambda: seguir(datos)),
-        "eventos": ("Eventos", lambda: eventos(datos)),
-        "consulta": ("Consulta", lambda: consulta(datos, filtro)),
+        "camaras": ("Cámaras", lambda: video(datos)),
+        "estadisticas": ("Estadísticas", lambda: panorama(datos)),
     }
-    # ?vista=consulta abre directamente una vista (link para compartir o capturar)
+    # nombres viejos de las vistas (links ya compartidos)
+    alias = {"panorama": "estadisticas", "video": "camaras", "eventos": "alertas",
+             "consulta": "buscador"}  # fmt: skip
     directa = st.query_params.get("vista")
+    directa = alias.get(directa, directa)
     if directa in vistas:
         titulo, dibujar = vistas[directa]
         st.header(titulo)

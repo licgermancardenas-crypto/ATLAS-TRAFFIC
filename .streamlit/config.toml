@@ -1,0 +1,15 @@
+# Tema del dashboard: centro de monitoreo (oscuro). Streamlit Community Cloud lee este
+# archivo desde la raíz del repositorio.
+[theme]
+base = "dark"
+primaryColor = "#00c2ff"
+backgroundColor = "#0a101c"
+secondaryBackgroundColor = "#111a2b"
+textColor = "#e6edf7"
+font = "sans serif"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

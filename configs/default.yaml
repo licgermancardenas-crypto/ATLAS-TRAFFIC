@@ -56,6 +56,19 @@ alertas:
   min_desplazamiento_px: 40  # ignora vehículos detenidos con jitter
   frames_limpios: 3          # frames a cada lado de la línea para validar el cruce
 
+conflictos:                  # riesgo vehículo-peatón (conflictos.py), validado a ojo
+  activa: true
+  radio_m: 2.0               # el vehículo pasa a menos de 2 m de donde estuvo/estará el peatón
+  pet_max_s: 3.0             # ...con menos de 3 s de diferencia (PET, post-encroachment time)
+  vel_min_kmh: 8             # el vehículo circula (no está parado en la fila)
+  desplazamiento_min_m: 10   # descarta objetos fijos que el detector toma por vehículos
+  peaton_min_s: 1.0          # peatón seguido al menos 1 s (si no, suele ser un poste o un reflejo)
+  peaton_min_detecciones: 15
+  calzada_radio_m: 1.5       # el peatón está en la calzada: por ahí pasan vehículos...
+  calzada_min_vehiculos: 3   # ...al menos 3 en el clip (si no, espera en el cordón)
+  grave_s: 1.0               # PET < 1 s: grave
+  moderado_s: 2.0            # 1-2 s: moderado; 2-3 s: leve
+
 correccion:                  # conteos corregidos por tasa de detección (correction.py)
   activa: true
   registros: docs/validacion_conteo_registros.csv   # conteos manuales de la validación
