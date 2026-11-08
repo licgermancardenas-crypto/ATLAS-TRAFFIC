@@ -9,6 +9,7 @@
     outputs/cruces_todos.parquet  un registro por cruce de línea, con color, recorte y
                                   hora real del vehículo (base de la consulta)
     outputs/conflictos_todos.parquet  situaciones de riesgo vehículo-peatón, con evidencia
+    outputs/infracciones_todos.parquet  sendas bloqueadas y detenciones prolongadas
   Las rutas de recortes (thumb) quedan relativas a outputs/.
 """
 
@@ -108,6 +109,7 @@ class ResultadoConsolidacion:
     rutas: dict[str, Path]
     giros: pd.DataFrame = field(default_factory=pd.DataFrame)
     conflictos: pd.DataFrame = field(default_factory=pd.DataFrame)
+    infracciones: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 def _prefijar_thumbs(df: pd.DataFrame, clip: Clip) -> pd.DataFrame:
@@ -120,6 +122,7 @@ def _prefijar_thumbs(df: pd.DataFrame, clip: Clip) -> pd.DataFrame:
 
 def consolidar(cfg: AppConfig, clips: list[Clip]) -> ResultadoConsolidacion:
     summary, tracks, eventos, cruces, giros, conflictos = [], [], [], [], [], []
+    infracciones = []
     for c in clips:
         d = _dir_corrida(cfg, c)
         if not (d / "intervalos.parquet").exists():
@@ -151,6 +154,11 @@ def consolidar(cfg: AppConfig, clips: list[Clip]) -> ResultadoConsolidacion:
             k = k.assign(clip_id=c.id, **meta)
             k["hora"] = inicio + pd.to_timedelta(k["ts"], unit="s")
             conflictos.append(k)
+        if (d / "infracciones.parquet").exists():
+            k = _prefijar_thumbs(pd.read_parquet(d / "infracciones.parquet"), c)
+            k = k.assign(clip_id=c.id, **meta)
+            k["hora"] = inicio + pd.to_timedelta(k["ts"], unit="s")
+            infracciones.append(k)
         if (d / "eventos.parquet").exists():
             e = _prefijar_thumbs(pd.read_parquet(d / "eventos.parquet"), c).assign(**meta)
             e["hora"] = inicio + pd.to_timedelta(e["ts"], unit="s")
@@ -170,9 +178,13 @@ def consolidar(cfg: AppConfig, clips: list[Clip]) -> ResultadoConsolidacion:
             "cruces": salida / "cruces_todos.parquet",
             "giros": salida / "giros_todos.parquet",
             "conflictos": salida / "conflictos_todos.parquet",
+            "infracciones": salida / "infracciones_todos.parquet",
         },
         giros=pd.concat(giros, ignore_index=True) if giros else pd.DataFrame(),
         conflictos=pd.concat(conflictos, ignore_index=True) if conflictos else pd.DataFrame(),
+        infracciones=(
+            pd.concat(infracciones, ignore_index=True) if infracciones else pd.DataFrame()
+        ),
     )
     res.summary.to_parquet(res.rutas["summary"], index=False)
     res.tracks.to_parquet(res.rutas["tracks"], index=False)
@@ -180,4 +192,5 @@ def consolidar(cfg: AppConfig, clips: list[Clip]) -> ResultadoConsolidacion:
     res.cruces.to_parquet(res.rutas["cruces"], index=False)
     res.giros.to_parquet(res.rutas["giros"], index=False)
     res.conflictos.to_parquet(res.rutas["conflictos"], index=False)
+    res.infracciones.to_parquet(res.rutas["infracciones"], index=False)
     return res

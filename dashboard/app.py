@@ -765,6 +765,14 @@ EXPLICACION_ALERTAS = """
 - **Riesgo peatonal:** un vehículo pasa a menos de 2 m del lugar donde está (o estuvo) un
   peatón en la calzada, con menos de 3 s de diferencia (*PET*, indicador estándar de
   seguridad vial). Grave: menos de 1 s · moderada: 1 a 2 s · leve: 2 a 3 s.
+- **Senda bloqueada:** un vehículo detenido 2 s o más con al menos el 30 % de su apoyo
+  sobre una senda peatonal. Grave: 15 s o más · moderada: 5 a 15 s · leve: menos de 5 s;
+  un nivel más si había personas en la senda (peatones o ciclistas: el detector no
+  los distingue).
+- **Detención prolongada:** un vehículo detenido 20 s o más en la calzada mientras el
+  tránsito de al lado circula (no es una cola). Puede ser doble fila, estacionamiento
+  prohibido o ascenso y descenso: el sistema no sabe dónde está el carril de
+  estacionamiento, así que hay que revisarla. No incluye colectivos (paran en la parada).
 - **Sentido contrario:** un vehículo cruza una línea en el sentido no permitido.
 - **Exceso de velocidad:** velocidad del vehículo (percentil 90 de su recorrido) por encima
   de la máxima de la calle (Ley 24.449: avenidas 60 km/h, calles 40 km/h). Margen ±5 %.

@@ -143,6 +143,25 @@ class ConflictosCfg(_Modelo):
     moderado_s: float = Field(2.0, gt=0)  # 1 a 2 s: moderado; 2 a pet_max_s: leve
 
 
+class InfraccionesCfg(_Modelo):
+    """Senda bloqueada y detención prolongada (ver infracciones.py)."""
+
+    activa: bool = True
+    vel_detenido_kmh: float = Field(3.0, ge=0)
+    hueco_s: float = Field(1.0, ge=0)  # huecos de detección tolerados dentro de una detención
+    senda_frac_min: float = Field(0.3, gt=0, le=1)  # parte del apoyo sobre la senda
+    senda_min_s: float = Field(2.0, ge=0)
+    senda_min_detecciones_peaton: int = Field(10, ge=1)
+    detencion_min_s: float = Field(20.0, gt=0)
+    detencion_radio_m: float = Field(6.0, gt=0)
+    detencion_vel_vecinos_kmh: float = Field(10.0, ge=0)
+    detencion_min_circulan: int = Field(5, ge=1)  # vehículos que pasan al lado
+    detencion_max_parados: int = Field(0, ge=0)  # otro parado al lado = cola, no detención
+    detencion_excluir: list[str] = Field(default_factory=lambda: ["bus"])  # paran en la parada
+    union_hueco_s: float = Field(5.0, ge=0)  # mismo vehículo partido en dos seguimientos
+    union_lugar_m: float = Field(2.0, ge=0)
+
+
 class CorreccionCfg(_Modelo):
     """Corrección de conteos por tasa de detección (ver correction.py)."""
 
@@ -185,6 +204,7 @@ class AppConfig(_Modelo):
     union: UnionCfg = UnionCfg()
     alertas: AlertasCfg = AlertasCfg()
     conflictos: ConflictosCfg = ConflictosCfg()
+    infracciones: InfraccionesCfg = InfraccionesCfg()
     correccion: CorreccionCfg = CorreccionCfg()
     render: RenderCfg = RenderCfg()
     rutas: RutasCfg = RutasCfg()
@@ -313,6 +333,14 @@ class Geometria(_Modelo):
 # --------------------------------------------------------------------------- camaras.yaml
 
 
+class ZonaSenda(_Modelo):
+    """Senda peatonal como rectángulo en el suelo, en metros (sistema común de la esquina)."""
+
+    nombre: str
+    x: tuple[float, float]
+    y: tuple[float, float]
+
+
 class Camara(_Modelo):
     """Una cámara (un punto fijo de la ciudad) y los encuadres que se grabaron desde ahí."""
 
@@ -328,6 +356,13 @@ class Camara(_Modelo):
     calles: dict[str, str] = Field(default_factory=dict)
     # calle -> velocidad máxima permitida (km/h)
     limites_kmh: dict[str, float] = Field(default_factory=dict)
+    sendas: dict[str, ZonaSenda] = Field(default_factory=dict)
+    # encuadre -> sendas que se ven y se calibraron en él (fuera de ellas el suelo no vale)
+    sendas_por_encuadre: dict[str, list[str]] = Field(default_factory=dict)
+
+    def zonas_senda(self, encuadre: str) -> dict[str, tuple[tuple[float, float], ...]]:
+        ids = self.sendas_por_encuadre.get(encuadre, [])
+        return {s: (self.sendas[s].x, self.sendas[s].y) for s in ids if s in self.sendas}
 
 
 class CamarasFile(_Modelo):

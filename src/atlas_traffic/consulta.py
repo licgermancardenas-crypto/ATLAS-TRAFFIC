@@ -3,7 +3,8 @@
 - cargar: lee los consolidados de outputs/ (los genera `batch`).
 - consultar: filtra los cruces y devuelve un registro por vehículo (pestaña Consulta).
 - resúmenes para el Panorama: flujo por tipo de día, congestión por franja horaria.
-- alertas: sentido contrario, riesgo peatonal y exceso de velocidad en una sola lista.
+- alertas: sentido contrario, riesgo peatonal, senda bloqueada, detención prolongada y
+  exceso de velocidad en una sola lista.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ class Datos:
     conteos: pd.DataFrame = field(default_factory=pd.DataFrame)  # conteo.csv de cada clip
     giros: pd.DataFrame = field(default_factory=pd.DataFrame)  # origen -> destino por vehículo
     conflictos: pd.DataFrame = field(default_factory=pd.DataFrame)  # riesgo vehículo-peatón
+    infracciones: pd.DataFrame = field(default_factory=pd.DataFrame)  # senda bloqueada, etc.
 
     @property
     def vacio(self) -> bool:
@@ -49,6 +51,7 @@ def cargar(outputs: Path) -> Datos:
         eventos=leer("eventos_todos.parquet"),
         giros=leer("giros_todos.parquet"),
         conflictos=leer("conflictos_todos.parquet"),
+        infracciones=leer("infracciones_todos.parquet"),
         outputs=outputs,
     )
 
@@ -242,12 +245,44 @@ def alertas(datos: Datos, limites_kmh: dict[str, dict[str, float]] | None = None
             "track_id": k["track_id"], "thumb": _col(k, "thumb"), "video": _col(k, "video"),
             "encuadre": _col(k, "encuadre"),
         }))  # fmt: skip
+    partes.append(_infracciones(datos.infracciones))
     partes.append(_excesos(datos, limites_kmh or {}))
     partes = [p for p in partes if not p.empty]
     if not partes:
         return pd.DataFrame(columns=COLUMNAS_ALERTAS)
     out = pd.concat(partes, ignore_index=True)[COLUMNAS_ALERTAS]
     return out.sort_values(["hora", "ts"], ascending=False, ignore_index=True)
+
+
+NOMBRE_SENDA = {"cordoba_frente": "la senda de Av. Córdoba (lado cámara)",
+                "cordoba_fondo": "la senda de Av. Córdoba (lado opuesto)",
+                "rp_izq": "la senda de Rodríguez Peña (izquierda)",
+                "rp_der": "la senda de Rodríguez Peña (derecha)"}  # fmt: skip
+
+
+def _infracciones(k: pd.DataFrame) -> pd.DataFrame:
+    if k.empty:
+        return pd.DataFrame(columns=COLUMNAS_ALERTAS)
+    senda = k["tipo"] == "senda_bloqueada"
+    detalle = []
+    for r in k.itertuples():
+        if r.tipo == "senda_bloqueada":
+            p = f", con {r.peatones} persona(s) en la senda" if r.peatones else ""
+            detalle.append(f"Vehículo #{r.track_id} detenido {r.duracion_s:.0f} s sobre "
+                           f"{NOMBRE_SENDA.get(r.senda, r.senda)}{p}")  # fmt: skip
+        else:
+            detalle.append(f"Vehículo #{r.track_id} detenido {r.duracion_s:.0f} s en la calzada "
+                           "mientras el tránsito de al lado circulaba (posible doble fila, "
+                           "estacionamiento prohibido o ascenso y descenso: revisar)")  # fmt: skip
+    return pd.DataFrame({
+        "clip_id": k["clip_id"], "hora": _col(k, "hora"), "ts": k["ts"],
+        "tipo": ["Senda bloqueada" if s else "Detención prolongada" for s in senda],
+        "gravedad": k["gravedad"],
+        "titulo": ["Vehículo detenido sobre la senda peatonal" if s
+                   else "Vehículo detenido en la calzada" for s in senda],
+        "detalle": detalle, "track_id": k["track_id"], "thumb": _col(k, "thumb"),
+        "video": _col(k, "video"), "encuadre": _col(k, "encuadre"),
+    })  # fmt: skip
 
 
 def _excesos(datos: Datos, limites: dict[str, dict[str, float]]) -> pd.DataFrame:

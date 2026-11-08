@@ -69,6 +69,22 @@ conflictos:                  # riesgo vehículo-peatón (conflictos.py), validad
   grave_s: 1.0               # PET < 1 s: grave
   moderado_s: 2.0            # 1-2 s: moderado; 2-3 s: leve
 
+infracciones:                # senda bloqueada y detención prolongada (infracciones.py)
+  activa: true
+  vel_detenido_kmh: 3        # por debajo, el vehículo está detenido
+  hueco_s: 1.0               # huecos de detección tolerados dentro de una detención
+  senda_frac_min: 0.3        # al menos el 30 % del apoyo del vehículo sobre la senda...
+  senda_min_s: 2.0           # ...durante 2 s o más
+  senda_min_detecciones_peaton: 10  # peatón en la senda mientras está bloqueada (visto 10 veces)
+  detencion_min_s: 20        # detención prolongada: 20 s o más...
+  detencion_radio_m: 6       # ...mientras al lado (a menos de 6 m)...
+  detencion_vel_vecinos_kmh: 10
+  detencion_min_circulan: 5  # ...pasan al menos 5 vehículos circulando...
+  detencion_max_parados: 0   # ...y no hay otro parado al lado (si no, es una cola)
+  detencion_excluir: [bus]   # los colectivos paran en la parada
+  union_hueco_s: 5           # une al mismo vehículo partido en dos seguimientos...
+  union_lugar_m: 2           # ...si se detuvo en el mismo lugar
+
 correccion:                  # conteos corregidos por tasa de detección (correction.py)
   activa: true
   registros: docs/validacion_conteo_registros.csv   # conteos manuales de la validación

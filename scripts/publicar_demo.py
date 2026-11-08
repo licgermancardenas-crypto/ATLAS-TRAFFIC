@@ -16,7 +16,7 @@ DESTINO = RAIZ / "demo" / "outputs"
 
 CONSOLIDADOS = ["summary.parquet", "tracks_todos.parquet", "cruces_todos.parquet",
                 "eventos_todos.parquet", "giros_todos.parquet",
-                "conflictos_todos.parquet"]  # fmt: skip
+                "conflictos_todos.parquet", "infracciones_todos.parquet"]  # fmt: skip
 
 
 def main() -> None:
@@ -44,7 +44,7 @@ def main() -> None:
         ):
             if (corrida / archivo).exists():
                 shutil.copy2(corrida / archivo, dest / archivo)
-        for carpeta in ("thumbs", "eventos", "foco", "conflictos"):
+        for carpeta in ("thumbs", "eventos", "foco", "conflictos", "infracciones"):
             if (corrida / carpeta).is_dir():
                 shutil.copytree(corrida / carpeta, dest / carpeta)
                 n_imagenes += len(list((dest / carpeta).glob("*.jpg")))

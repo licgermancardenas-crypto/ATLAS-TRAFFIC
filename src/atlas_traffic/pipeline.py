@@ -26,10 +26,12 @@ import pandas as pd
 from atlas_traffic.alerts import detectar_sentido_contrario, guardar_evidencia
 from atlas_traffic.attributes import extraer_atributos
 from atlas_traffic.config import (
+    EXTENSION_PLANO,
     AppConfig,
     Clip,
     EstabilizacionCfg,
     load_calibracion,
+    load_camaras,
     load_geometria,
 )
 from atlas_traffic.conflictos import COLUMNAS_CONFLICTOS, detectar_conflictos
@@ -44,6 +46,11 @@ from atlas_traffic.correction import (
 from atlas_traffic.counting import anotar_tracks, contar, resumen_conteo
 from atlas_traffic.detect import Detector
 from atlas_traffic.geometry import dentro_roi, filtrar_exclusiones
+from atlas_traffic.infracciones import (
+    COLUMNAS_INFRACCIONES,
+    apoyo_en_sendas,
+    detectar_infracciones,
+)
 from atlas_traffic.metrics import calcular_intervalos, vehiculos_en_roi
 from atlas_traffic.render import homografias_por_frame
 from atlas_traffic.stabilize import (
@@ -401,6 +408,22 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
             conflictos = _evidencia_conflictos(clip.archivo, conflictos, det, salida / "conflictos")
             conflictos.assign(clip_id=clip.id).to_parquet(salida / "conflictos.parquet",
                                                           index=False)  # fmt: skip
+            infracciones = pd.DataFrame(columns=COLUMNAS_INFRACCIONES)
+            camara = load_camaras(cfg.rutas.camaras).de_encuadre(geo.encuadre)
+            if cfg.infracciones.activa and camara is not None:
+                sendas = camara.zonas_senda(geo.encuadre)
+                es_peaton = trayectorias["track_id"].isin(peatones["track_id"]).to_numpy()
+                en_zona = apoyo_en_sendas(trayectorias[en_roi & ~es_peaton], hs or {},
+                                          cal_suelo.homografia, sendas)  # fmt: skip
+                clases = dict(zip(tracks["track_id"], tracks["clase_detalle"], strict=True))
+                infracciones = detectar_infracciones(
+                    en_zona, peatones, sendas, clases, cfg.infracciones,
+                    (EXTENSION_PLANO["x"], EXTENSION_PLANO["y"]),
+                )  # fmt: skip
+            infracciones = _evidencia_infracciones(clip.archivo, infracciones, det,
+                                                   salida / "infracciones")  # fmt: skip
+            infracciones.assign(clip_id=clip.id).to_parquet(salida / "infracciones.parquet",
+                                                            index=False)  # fmt: skip
         # para "seguir un vehículo" en el dashboard: recorridos y el cuadro de referencia
         trayectorias.to_parquet(salida / "trayectorias.parquet", index=False)
         ref = clip.estabilizacion(cfg.estabilizacion).frame_referencia
@@ -423,7 +446,8 @@ def analizar_clip(clip: Clip, cfg: AppConfig) -> ResultadoAnalisis:
         eventos.to_parquet(salida / "eventos.parquet", index=False)
     else:
         viejos = ("cruces.parquet", "conteo.csv", "intervalos.parquet", "eventos.parquet",
-                  "giros.parquet", "conflictos.parquet", "peatones.parquet")  # fmt: skip
+                  "giros.parquet", "conflictos.parquet", "peatones.parquet",
+                  "infracciones.parquet")  # fmt: skip
         for viejo in viejos:
             (salida / viejo).unlink(missing_ok=True)
     atributos = extraer_atributos(clip.archivo, det, cfg.color, salida / "thumbs")
@@ -488,3 +512,27 @@ def _video_eventos(video: Path, eventos: pd.DataFrame, det: pd.DataFrame,
         if mp4.exists():
             eventos.at[k, "video"] = f"{carpeta.name}/{nombre}.mp4"
     return eventos
+
+
+def _evidencia_infracciones(video: Path, inf: pd.DataFrame, det: pd.DataFrame,
+                            carpeta: Path) -> pd.DataFrame:  # fmt: skip
+    """Foto (a mitad de la detención) y video corto de cada senda bloqueada o detención."""
+    from atlas_traffic.foco import video_evidencia
+
+    carpeta.mkdir(parents=True, exist_ok=True)
+    for viejo in [*carpeta.glob("*.jpg"), *carpeta.glob("*.mp4")]:
+        viejo.unlink()
+    inf = inf.assign(thumb=None, video=None)
+    for k, r in inf.iterrows():
+        ids = [int(t) for t in str(r["track_ids"]).split(",")]
+        nombre = f"{r['tipo']}_{ids[0]}_{int(r['ts'])}"
+        etiqueta = "sobre la senda" if r["tipo"] == "senda_bloqueada" else "detenido"
+        t0, t1 = r["ts"] - 1.0, min(r["ts_fin"] + 1.0, r["ts"] + 15.0)
+        video_evidencia(video, det, [(t, ROJO, f"#{t} {etiqueta}") for t in ids], t0, t1,
+                        (r["ts"] + min(r["ts_fin"], t1)) / 2, carpeta / f"{nombre}.mp4",
+                        carpeta / f"{nombre}.jpg")  # fmt: skip
+        if (carpeta / f"{nombre}.jpg").exists():
+            inf.at[k, "thumb"] = f"{carpeta.name}/{nombre}.jpg"
+        if (carpeta / f"{nombre}.mp4").exists():
+            inf.at[k, "video"] = f"{carpeta.name}/{nombre}.mp4"
+    return inf

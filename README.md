@@ -8,8 +8,9 @@ Pipeline de visión por computadora que analiza el tránsito de una bocacalle fi
 un balcón (Av. Córdoba y Rodríguez Peña, CABA):
 - cuenta vehículos **una sola vez y por aproximación**;
 - clasifica la **congestión por densidad + velocidad**;
-- detecta **circulación en sentido contrario**, **riesgo peatonal** y **exceso de
-  velocidad**, con foto y video de evidencia;
+- detecta **circulación en sentido contrario**, **riesgo peatonal**, **sendas
+  bloqueadas**, **detenciones prolongadas** y **exceso de velocidad**, con foto y video de
+  evidencia;
 - consolida varios clips en un dataset que se puede consultar vehículo por vehículo;
 - lo muestra todo en un **centro de monitoreo** con buscador de vehículos.
 
@@ -44,6 +45,9 @@ Además:
 - **Detecta situaciones de riesgo peatonal:** un vehículo que pasa a menos de 2 m del
   lugar de un peatón en la calzada, con menos de 3 s de diferencia (PET, el indicador
   estándar de seguridad vial). Ver [docs/conflictos.md](docs/conflictos.md).
+- **Detecta vehículos detenidos sobre la senda peatonal** (con su duración y si había
+  personas cruzando) y detenciones prolongadas en la calzada mientras el tránsito sigue
+  (posible doble fila). Ver [docs/infracciones.md](docs/infracciones.md).
 - **Arma la matriz de giros:** por dónde entra y por dónde sale cada vehículo, con el
   porcentaje de cada giro y su margen de error. Ver [docs/giros.md](docs/giros.md).
 - **Une los seguimientos cortados.** Cuando algo tapa un objeto un instante, o una
@@ -65,7 +69,8 @@ grabaciones ya procesadas, no una transmisión en vivo, y lo dice en pantalla.
   - mapa con la ubicación de la cámara, sus barrios y las velocidades máximas;
   - la última grabación analizada y las últimas alertas;
   - actividad en el tiempo.
-- **Alertas:** riesgo peatonal, sentido contrario y exceso de velocidad en una sola lista,
+- **Alertas:** riesgo peatonal, senda bloqueada, detención prolongada, sentido contrario y
+  exceso de velocidad en una sola lista,
   con gravedad (grave, moderada, leve) y filtros. Cada alerta tiene su evidencia en foto y
   video, y un link para seguir a ese vehículo.
 - **Buscador:** encuentra vehículos por:
@@ -223,6 +228,8 @@ cumplió del todo.
 | Video original | (fuera del brief) | ✅ iPhone sin WhatsApp: entrada de Córdoba 10/10, salida 15/15. ❌ un colectivo con luces interiores no se detecta | [validacion_video_original.md](docs/validacion_video_original.md) |
 | Color | saturados > 85 %, acromáticos > 65 % | ✅ día 88 % y 76 %; noche 100 % y 71 % con balance de blancos | [validacion_color.md](docs/validacion_color.md) |
 | Riesgo peatonal | (fuera del brief) | ⚠️ 8 candidatos revisados a ojo: 7 falsos (postes, reflejos, gente esperando en el cordón) descartados con filtros; queda 1 real (leve, PET 2,7 s) | [conflictos.md](docs/conflictos.md) |
+| Senda bloqueada | (fuera del brief) | ✅ 8 alertas en la cola de muestra_3: 7 claras y 1 límite (el auto apenas toca el borde). Descartadas 6 sobre sendas no calibradas | [infracciones.md](docs/infracciones.md) |
+| Detención prolongada | (fuera del brief) | ⚠️ 1 alerta (taxi 35 s junto al cordón). Es para revisar: el sistema no sabe dónde está el carril de estacionamiento | [infracciones.md](docs/infracciones.md) |
 | Sentido contrario | cero falsos positivos | ✅ 0 eventos en 3 clips; la prueba controlada dispara en 81 de 84 cruces | [validacion_alertas.md](docs/validacion_alertas.md) |
 | Congestión | congestionado = HIGH, liviano = LOW, sin ajuste manual | ✅ con la salvedad del supuesto de flujo libre | [validacion_congestion.md](docs/validacion_congestion.md) |
 | Batch | un comando reprocesa todo | ✅ 3 clips en 577 s | — |

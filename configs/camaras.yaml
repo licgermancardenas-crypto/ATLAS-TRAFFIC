@@ -17,3 +17,17 @@ camaras:
     limites_kmh:              # Ley 24.449, art. 51 (zona urbana): avenidas 60, calles 40
       av_cordoba: 60
       rodriguez_pena: 40
+    # Sendas peatonales en metros, en el sistema del suelo de la esquina (el mismo para
+    # todos los encuadres: ver configs/suelo/ y outputs/suelo/*.jpg). Medidas sobre la
+    # vista desde arriba: coinciden entre encuadres a ±0,5 m.
+    sendas:
+      cordoba_frente: {nombre: Senda de Av. Córdoba (lado cámara), x: [0.0, 18.0], y: [-2.5, 2.8]}
+      cordoba_fondo: {nombre: Senda de Av. Córdoba (lado opuesto), x: [-2.0, 16.0], y: [14.5, 20.0]}
+      rp_izq: {nombre: Senda de Rodríguez Peña (izquierda), x: [-9.0, -5.5], y: [2.5, 10.5]}
+      rp_der: {nombre: Senda de Rodríguez Peña (derecha), x: [18.5, 25.5], y: [4.0, 13.5]}
+    # las que se ven y se calibraron en cada encuadre (scripts/calibrar_suelo.py)
+    sendas_por_encuadre:
+      encuadre_n1: [cordoba_frente, cordoba_fondo, rp_izq, rp_der]
+      encuadre_m1: [cordoba_frente, cordoba_fondo, rp_izq]
+      encuadre_m2: [cordoba_frente, cordoba_fondo, rp_der]
+      encuadre_m3: [cordoba_frente, cordoba_fondo]
