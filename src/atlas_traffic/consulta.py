@@ -3,8 +3,9 @@
 - cargar: lee los consolidados de outputs/ (los genera `batch`).
 - consultar: filtra los cruces y devuelve un registro por vehículo (pestaña Consulta).
 - resúmenes para el Panorama: flujo por tipo de día, congestión por franja horaria.
-- alertas: sentido contrario, riesgo peatonal, senda bloqueada, detención prolongada y
-  exceso de velocidad en una sola lista.
+- alertas: sentido contrario, riesgo peatonal, senda bloqueada, detención prolongada,
+  exceso de velocidad y vehículos de interés en una sola lista.
+- vehículos de interés: búsquedas guardadas y los vehículos que las cumplen.
 """
 
 from __future__ import annotations
@@ -212,11 +213,16 @@ def _col(df: pd.DataFrame, nombre: str):
     return df[nombre] if nombre in df else None
 
 
-def alertas(datos: Datos, limites_kmh: dict[str, dict[str, float]] | None = None) -> pd.DataFrame:
+def alertas(
+    datos: Datos,
+    limites_kmh: dict[str, dict[str, float]] | None = None,
+    interes: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     """Todas las alertas en una lista, la más reciente primero.
 
     `limites_kmh`: encuadre -> {calle: km/h} (de configs/camaras.yaml) para el exceso de
-    velocidad. Sin límites no hay alertas de velocidad.
+    velocidad. Sin límites no hay alertas de velocidad. `interes`: coincidencias de los
+    vehículos de interés (ver `coincidencias`).
     """
     partes = []
     e = datos.eventos
@@ -246,6 +252,8 @@ def alertas(datos: Datos, limites_kmh: dict[str, dict[str, float]] | None = None
             "encuadre": _col(k, "encuadre"),
         }))  # fmt: skip
     partes.append(_infracciones(datos.infracciones))
+    if interes is not None and not interes.empty:
+        partes.append(_alertas_interes(interes))
     partes.append(_excesos(datos, limites_kmh or {}))
     partes = [p for p in partes if not p.empty]
     if not partes:
@@ -317,4 +325,84 @@ def _excesos(datos: Datos, limites: dict[str, dict[str, float]]) -> pd.DataFrame
                                              strict=True)],
         "track_id": v["track_id"], "thumb": _col(v, "thumb"), "video": foco,
         "encuadre": v["encuadre"],
+    })  # fmt: skip
+
+
+# --------------------------------------------------------------------------- vehículos de interés
+
+
+def encuadres_de_barrios(camaras, barrios: list[str]) -> list[str]:
+    """Encuadres de las cámaras que ven alguno de los barrios ([] = sin filtro)."""
+    if not barrios:
+        return []
+    enc = [e for c in camaras.camaras if set(c.barrios) & set(barrios) for e in c.encuadres]
+    return enc or ["(ninguno)"]  # ningún encuadre: la búsqueda no encuentra nada
+
+
+def filtro_de_interes(v, camaras) -> Filtro:
+    """Un vehículo de interés (config.VehiculoInteres) como filtro de la consulta."""
+    franja = None
+    if v.hora_desde or v.hora_hasta:
+        franja = (dt.time.fromisoformat(v.hora_desde or "00:00"),
+                  dt.time.fromisoformat(v.hora_hasta or "23:59"))  # fmt: skip
+    return Filtro(clases=list(v.tipos), colores=list(v.colores), calles=list(v.calles),
+                  encuadres=encuadres_de_barrios(camaras, list(v.barrios)), franja=franja,
+                  velocidad_min_kmh=v.velocidad_min_kmh)  # fmt: skip
+
+
+COLUMNAS_INTERES = ["interes_id", "interes_nombre", "prioridad"]
+
+
+def coincidencias(cruces: pd.DataFrame, lista, camaras) -> pd.DataFrame:
+    """Vehículos que cumplen cada vehículo de interés activo (uno por vehículo y búsqueda)."""
+    partes = []
+    for v in lista.vehiculos:
+        if not v.activa or cruces.empty:
+            continue
+        r = consultar(cruces, filtro_de_interes(v, camaras))
+        if not r.empty:
+            partes.append(r.assign(interes_id=v.id, interes_nombre=v.nombre,
+                                   prioridad=v.prioridad))  # fmt: skip
+    if not partes:
+        return pd.DataFrame(columns=[*cruces.columns, *COLUMNAS_INTERES])
+    return pd.concat(partes, ignore_index=True)
+
+
+def describir_interes(v, nombres_calles: dict[str, str] | None = None) -> str:
+    """ "auto o moto · rojo · por Av. Córdoba · de 19:00 a 20:00 · a más de 40 km/h"."""
+    from atlas_traffic.config import PRIORIDAD_GRAVEDAD  # noqa: F401 (documenta el mapeo)
+
+    tipos = {"car": "auto", "truck": "camión", "bus": "colectivo", "motorcycle": "moto",
+             "bicycle": "bicicleta", "person": "persona"}  # fmt: skip
+    nombres_calles = nombres_calles or {}
+    partes = [" o ".join(tipos.get(t, t) for t in v.tipos) or "cualquier vehículo"]
+    if v.colores:
+        partes.append(" o ".join(v.colores))
+    if v.calles:
+        partes.append("por " + " o ".join(nombres_calles.get(c, c) for c in v.calles))
+    if v.barrios:
+        partes.append("en " + " o ".join(v.barrios))
+    if v.hora_desde or v.hora_hasta:
+        partes.append(f"de {v.hora_desde or '00:00'} a {v.hora_hasta or '23:59'}")
+    if v.velocidad_min_kmh > 0:
+        partes.append(f"a más de {v.velocidad_min_kmh:.0f} km/h")
+    return " · ".join(partes)
+
+
+def _alertas_interes(m: pd.DataFrame) -> pd.DataFrame:
+    from atlas_traffic.config import PRIORIDAD_GRAVEDAD
+
+    detalle = [
+        f"Coincide con «{n}»: {c} {col} cruzando {a} ({s})"
+        for n, c, col, a, s in zip(m["interes_nombre"], m["clase_detalle"], m["color"],
+                                   m["aproximacion"], m["sentido"], strict=True)
+    ]  # fmt: skip
+    return pd.DataFrame({
+        "clip_id": m["clip_id"], "hora": _col(m, "hora"), "ts": m["ts_cruce"],
+        "tipo": "Vehículo de interés", "gravedad": m["prioridad"].map(PRIORIDAD_GRAVEDAD),
+        "titulo": "Apareció un vehículo de interés", "detalle": detalle,
+        "track_id": m["track_id"], "thumb": _col(m, "thumb"),
+        "video": [f"runs/{c}/foco/{t}.mp4" for c, t in zip(m["clip_id"], m["track_id"],
+                                                           strict=True)],
+        "encuadre": _col(m, "encuadre"),
     })  # fmt: skip

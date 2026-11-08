@@ -25,6 +25,7 @@ assert not errores, errores
 assert len(at.get("video")) >= 1, "no hay reproductor de video"
 etiquetas = [t.label for t in at.tabs]
 assert any(t.startswith("Alertas") for t in etiquetas), etiquetas
+assert any(t.startswith("Vehículos de interés") for t in etiquetas), etiquetas
 print("ok")
 """
 

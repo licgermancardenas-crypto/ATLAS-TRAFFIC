@@ -268,10 +268,37 @@ def batch(
         typer.echo(tabla.rename("intervalos").to_string())
         typer.echo(f"tracks_todos.parquet: {len(res.tracks)} objetos | "
                    f"eventos_todos.parquet: {len(res.eventos)} eventos")  # fmt: skip
+        _avisar_interes(cfg)
     typer.echo(f"\nBatch terminado en {time.perf_counter() - t0:.0f}s: "
                f"{len(procesados)} ok, {len(fallidos)} con error")  # fmt: skip
     if fallidos:
         raise typer.Exit(code=1)
+
+
+def _avisar_interes(cfg) -> None:
+    """Al terminar: qué vehículos de interés aparecieron en lo procesado."""
+    import pandas as pd
+
+    from atlas_traffic.config import load_camaras, load_interes
+    from atlas_traffic.consulta import cargar, coincidencias
+
+    lista = load_interes(cfg.rutas.interes)
+    if not lista.vehiculos:
+        return
+    m = coincidencias(cargar(cfg.rutas.outputs).cruces, lista, load_camaras(cfg.rutas.camaras))
+    activos = sum(v.activa for v in lista.vehiculos)
+    typer.echo(f"\nVehículos de interés: {activos} búsquedas activas, {len(m)} apariciones")
+    for (nombre, prioridad), g in m.groupby(["interes_nombre", "prioridad"], sort=False):
+        color = typer.colors.RED if prioridad == "alta" else typer.colors.YELLOW
+        horas = ", ".join(f"{h:%d/%m %H:%M:%S}" for h in pd.to_datetime(g["hora"]).head(5))
+        typer.secho(f"  [{prioridad}] {nombre}: {len(g)} ({horas}"
+                    f"{'…' if len(g) > 5 else ''})", fg=color)  # fmt: skip
+
+
+@app.command()
+def interes(config: Path = ConfigOpt) -> None:
+    """Muestra qué vehículos de interés aparecieron en los clips ya procesados."""
+    _avisar_interes(load_app_config(config))
 
 
 @app.command()

@@ -69,8 +69,8 @@ grabaciones ya procesadas, no una transmisión en vivo, y lo dice en pantalla.
   - mapa con la ubicación de la cámara, sus barrios y las velocidades máximas;
   - la última grabación analizada y las últimas alertas;
   - actividad en el tiempo.
-- **Alertas:** riesgo peatonal, senda bloqueada, detención prolongada, sentido contrario y
-  exceso de velocidad en una sola lista,
+- **Alertas:** riesgo peatonal, senda bloqueada, detención prolongada, sentido contrario,
+  exceso de velocidad y vehículos de interés en una sola lista,
   con gravedad (grave, moderada, leve) y filtros. Cada alerta tiene su evidencia en foto y
   video, y un link para seguir a ese vehículo.
 - **Buscador:** encuentra vehículos por:
@@ -82,6 +82,16 @@ grabaciones ya procesadas, no una transmisión en vivo, y lo dice en pantalla.
   seguirlo. Las búsquedas se comparten por URL, por ejemplo
   `?vista=buscador&tipo=car&color=blanco&calle=av_cordoba&hora_desde=19:00&hora_hasta=20:00`.
   La marca y la patente no se pueden leer con la resolución de estos videos.
+- **Vehículos de interés:** búsquedas guardadas que el sistema revisa solo. Cada
+  vehículo que cumple una búsqueda activa aparece en la lista y genera una alerta con la
+  prioridad elegida (alta, media o baja).
+  - Se crean desde el Buscador ("Guardar esta búsqueda") o con un formulario.
+  - Cada búsqueda se puede pausar o borrar.
+  - Se guardan en `configs/vehiculos_interes.yaml`, que también se puede editar a mano.
+  - Al terminar `atlas-traffic batch` se listan las apariciones; también con
+    `atlas-traffic interes`.
+
+  ![Vehículos de interés](docs/assets/dashboard_interes.jpg)
 - **Seguir un vehículo:** se hace click sobre el recorrido de un vehículo en la imagen de
   la esquina (o se lo elige de una lista) y se analiza solo ese vehículo:
   - un video con una cámara virtual que lo sigue, con zoom automático, su estela y su

@@ -6,6 +6,7 @@ Cuatro archivos de configuración, cuatro modelos:
 - configs/geometria/*.yaml  -> Geometria       (ROI y líneas de conteo por encuadre)
 - configs/calibracion.yaml  -> Calibracion     (umbrales de congestión, generado)
 - configs/camaras.yaml      -> CamarasFile     (dónde está cada cámara: calle, barrio, límites)
+- configs/vehiculos_interes.yaml -> InteresFile (búsquedas guardadas que generan alertas)
 
 Todos usan extra="forbid": un typo en el YAML es un error, no un campo ignorado.
 """
@@ -186,6 +187,7 @@ class RutasCfg(_Modelo):
     outputs: Path = Path("outputs")
     suelo: Path = Path("configs/suelo")  # calibración métrica por encuadre (km/h)
     camaras: Path = Path("configs/camaras.yaml")  # ubicación de cada cámara
+    interes: Path = Path("configs/vehiculos_interes.yaml")  # vehículos de interés
 
 
 # Plano de la esquina visto desde arriba (foco.plano_suelo y dashboard): zona que cubre,
@@ -375,6 +377,63 @@ class CamarasFile(_Modelo):
 def load_camaras(path: Path) -> CamarasFile:
     path = Path(path)
     return CamarasFile.model_validate(read_yaml(path)) if path.exists() else CamarasFile()
+
+
+# --------------------------------------------------------------------------- vehiculos_interes.yaml
+
+PRIORIDAD_GRAVEDAD = {"alta": "grave", "media": "moderado", "baja": "leve"}
+
+
+class VehiculoInteres(_Modelo):
+    """Una búsqueda guardada: cada vehículo procesado que la cumple genera una alerta.
+
+    Criterios vacíos = cualquiera. Las horas son la hora del día real ("19:30"); si
+    hora_desde > hora_hasta, la franja cruza la medianoche.
+    """
+
+    id: str = Field(min_length=1)
+    nombre: str = Field(min_length=1)
+    prioridad: Literal["alta", "media", "baja"] = "media"
+    activa: bool = True
+    notas: str = ""
+    tipos: list[str] = Field(default_factory=list)  # car, truck, bus, motorcycle
+    colores: list[str] = Field(default_factory=list)
+    calles: list[str] = Field(default_factory=list)  # av_cordoba, rodriguez_pena
+    barrios: list[str] = Field(default_factory=list)
+    hora_desde: str | None = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    hora_hasta: str | None = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    velocidad_min_kmh: float = Field(0.0, ge=0)
+    creado: dt.datetime | None = None
+
+
+class InteresFile(_Modelo):
+    vehiculos: list[VehiculoInteres] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _ids_unicos(self) -> InteresFile:
+        ids = [v.id for v in self.vehiculos]
+        if len(ids) != len(set(ids)):
+            raise ValueError("ids de vehículos de interés repetidos")
+        return self
+
+
+def load_interes(path: Path) -> InteresFile:
+    path = Path(path)
+    return InteresFile.model_validate(read_yaml(path)) if path.exists() else InteresFile()
+
+
+def save_interes(lista: InteresFile, path: Path) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cabecera = (
+        "# Vehículos de interés: búsquedas guardadas. Cada vehículo procesado que cumple una\n"
+        "# búsqueda activa genera una alerta (prioridad alta = grave, media = moderada,\n"
+        "# baja = leve). Se editan desde el dashboard o a mano. Criterio vacío = cualquiera.\n\n"
+    )
+    datos = lista.model_dump(mode="json", exclude_defaults=True)
+    with path.open("w", encoding="utf-8") as f:
+        f.write(cabecera)
+        yaml.safe_dump(datos, f, sort_keys=False, allow_unicode=True)
 
 
 # --------------------------------------------------------------------------- calibracion.yaml

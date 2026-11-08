@@ -32,8 +32,12 @@ from atlas_traffic.config import (
     DEFAULT_CONFIG_PATH,
     EXTENSION_PLANO,
     CamarasFile,
+    InteresFile,
+    VehiculoInteres,
     load_app_config,
     load_camaras,
+    load_interes,
+    save_interes,
 )
 from atlas_traffic.consulta import (
     ORDEN_CONGESTION,
@@ -42,8 +46,11 @@ from atlas_traffic.consulta import (
     alertas,
     calle_de_linea,
     cargar,
+    coincidencias,
     congestion_por_franja,
     consultar,
+    describir_interes,
+    encuadres_de_barrios,
     flujo_por_tipo_dia,
     movimientos_disponibles,
     para_csv,
@@ -774,6 +781,8 @@ EXPLICACION_ALERTAS = """
   prohibido o ascenso y descenso: el sistema no sabe dónde está el carril de
   estacionamiento, así que hay que revisarla. No incluye colectivos (paran en la parada).
 - **Sentido contrario:** un vehículo cruza una línea en el sentido no permitido.
+- **Vehículo de interés:** un vehículo que cumple una búsqueda guardada (pestaña
+  Vehículos de interés). La gravedad es la prioridad que se le dio a la búsqueda.
 - **Exceso de velocidad:** velocidad del vehículo (percentil 90 de su recorrido) por encima
   de la máxima de la calle (Ley 24.449: avenidas 60 km/h, calles 40 km/h). Margen ±5 %.
 
@@ -916,18 +925,23 @@ def filtros_busqueda(datos, camaras: CamarasFile) -> Filtro:
             conf = y.slider("Confianza mínima de color", 0.0, 1.0,
                             min(1.0, max(0.0, _numero_de_url("confianza", 0.0))), 0.05,
                             key="b_confianza")  # fmt: skip
-    encuadres = [e for cam in camaras.camaras if set(cam.barrios) & set(barrios)
-                 for e in cam.encuadres]  # fmt: skip
-    if barrios and not encuadres:
-        encuadres = ["(ninguno)"]
+    encuadres = encuadres_de_barrios(camaras, barrios)
     franja = None if (h_desde, h_hasta) == (dt.time(0, 0), dt.time(23, 59)) else (h_desde, h_hasta)
+    # para "guardar como vehículo de interés"
+    st.session_state["criterios_busqueda"] = {
+        "tipos": tipos, "colores": colores, "calles": calles, "barrios": barrios,
+        "hora_desde": f"{h_desde:%H:%M}" if franja else None,
+        "hora_hasta": f"{h_hasta:%H:%M}" if franja else None,
+        "velocidad_min_kmh": float(vel_min),
+    }  # fmt: skip
     return Filtro(clips=clips, fechas=rango_fechas, segundos=segundos, clases=tipos,
                   colores=colores, movimientos=[parsear_movimiento(m) for m in movimientos],
                   confianza_color_min=conf, franja=franja, calles=calles, encuadres=encuadres,
                   velocidad_min_kmh=float(vel_min))  # fmt: skip
 
 
-def buscador(datos, camaras: CamarasFile) -> None:
+def buscador(datos, camaras: CamarasFile, lista: InteresFile | None = None,
+             ruta_interes: Path | None = None) -> None:  # fmt: skip
     if datos.cruces.empty:
         st.info("No hay cruces consolidados: corré `atlas-traffic batch`.")
         return
@@ -937,6 +951,8 @@ def buscador(datos, camaras: CamarasFile) -> None:
     c1.metric("Vehículos que cumplen el filtro", len(res))
     c2.download_button("Descargar CSV", para_csv(res), "busqueda_atlas.csv", "text/csv",
                        width="stretch")  # fmt: skip
+    if lista is not None and ruta_interes is not None:
+        guardar_busqueda(lista, ruta_interes)
     if res.empty:
         st.info("Ningún vehículo cumple los criterios.")
         return
@@ -944,11 +960,20 @@ def buscador(datos, camaras: CamarasFile) -> None:
         "Cada ficha es un vehículo, con el primer cruce que cumple la búsqueda. La marca y "
         "la patente no se pueden leer con la resolución de estos videos."
     )
+    _grilla_fichas(datos, camaras, res, "ficha")
+    if len(res) > 20 * COLUMNAS_GRILLA:
+        st.caption(f"Mostrando 120 de {len(res)}. El CSV tiene todos.")
+    with st.expander("Tabla"):
+        st.dataframe(res.drop(columns=["thumb"], errors="ignore"), hide_index=True)
+
+
+def _grilla_fichas(datos, camaras: CamarasFile, res: pd.DataFrame, prefijo: str) -> None:
+    """Una ficha por vehículo: foto, tipo, color, velocidad, hora, calle y link a seguirlo."""
     filas = [res.iloc[i : i + COLUMNAS_GRILLA] for i in range(0, len(res), COLUMNAS_GRILLA)]
     for fila in filas[:20]:
         cols = st.columns(COLUMNAS_GRILLA)
         for col, r in zip(cols, fila.itertuples(), strict=False):
-            with col.container(border=True, key=f"ficha_{r.clip_id}_{r.track_id}"):
+            with col.container(border=True, key=f"{prefijo}_{r.clip_id}_{r.track_id}"):
                 ruta = _imagen(datos, r.thumb)
                 if ruta:
                     st.image(ruta, width="stretch")
@@ -960,10 +985,138 @@ def buscador(datos, camaras: CamarasFile) -> None:
                         f'{SENTIDOS.get(r.sentido, r.sentido)}<br>'
                         f'<a href="{_link_seguir(r.clip_id, r.track_id)}" target="_self">'
                         f'Seguir →</a></div>')  # fmt: skip
-    if len(filas) > 20:
-        st.caption(f"Mostrando 120 de {len(res)}. El CSV tiene todos.")
-    with st.expander("Tabla"):
-        st.dataframe(res.drop(columns=["thumb"], errors="ignore"), hide_index=True)
+
+
+# --------------------------------------------------------------------------- vehículos de interés
+
+PRIORIDADES = {"alta": "Alta (alerta grave)", "media": "Media (alerta moderada)",
+               "baja": "Baja (alerta leve)"}  # fmt: skip
+
+
+def _ruta_interes(cfg) -> Path:
+    ruta = Path(cfg.rutas.interes)
+    if ruta.exists() or ruta.parent.exists():
+        return ruta
+    return RAIZ / "configs" / "vehiculos_interes.yaml"
+
+
+def _nuevo_id(nombre: str, lista: InteresFile) -> str:
+    import re
+    import unicodedata
+
+    base = unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode()
+    base = re.sub(r"[^a-z0-9]+", "_", base.lower()).strip("_")[:40] or "vehiculo"
+    ids, k, nuevo = {v.id for v in lista.vehiculos}, 2, base
+    while nuevo in ids:
+        nuevo, k = f"{base}_{k}", k + 1
+    return nuevo
+
+
+def _guardar_interes(lista: InteresFile, ruta: Path, vehiculos: list[VehiculoInteres]) -> None:
+    try:
+        save_interes(InteresFile(vehiculos=vehiculos), ruta)
+    except OSError as e:
+        st.error(f"No se pudo guardar en {ruta}: {e}")
+        return
+    st.rerun()
+
+
+def guardar_busqueda(lista: InteresFile, ruta: Path) -> None:
+    """Formulario del buscador: la búsqueda actual pasa a ser un vehículo de interés."""
+    crit = st.session_state.get("criterios_busqueda")
+    if not crit:
+        return
+    with st.expander("Guardar esta búsqueda como vehículo de interés"):
+        st.caption(
+            "Cada vehículo procesado que cumpla estos criterios va a generar una alerta. Se "
+            "guardan tipo, color, calle, barrio, horario y velocidad mínima."
+        )
+        with st.form("guardar_interes", border=False):
+            a, b = st.columns([3, 2])
+            nombre = a.text_input("Nombre", placeholder="Ej.: auto rojo visto el martes")
+            prioridad = b.selectbox("Prioridad", list(PRIORIDADES), index=1,
+                                    format_func=PRIORIDADES.get)  # fmt: skip
+            notas = st.text_input("Notas (opcional)")
+            if st.form_submit_button("Guardar", type="primary"):
+                if not nombre.strip():
+                    st.warning("Poné un nombre.")
+                    return
+                nuevo = VehiculoInteres(id=_nuevo_id(nombre, lista), nombre=nombre.strip(),
+                                        prioridad=prioridad, notas=notas,
+                                        creado=dt.datetime.now().replace(microsecond=0),
+                                        **crit)  # fmt: skip
+                _guardar_interes(lista, ruta, [*lista.vehiculos, nuevo])
+
+
+def vehiculos_interes(datos, camaras: CamarasFile, lista: InteresFile, ruta: Path,
+                      coinc: pd.DataFrame) -> None:  # fmt: skip
+    st.caption(
+        "Búsquedas guardadas que el sistema revisa solo: cada vehículo procesado que cumple "
+        "una búsqueda activa aparece acá y en Alertas. Para agregar una, armá la búsqueda en "
+        "el Buscador y guardala, o usá el formulario de abajo."
+    )
+    st.caption(f"Se guardan en `{ruta.name}` (configs/). En la demo publicada, los cambios "
+               "duran hasta que la app se reinicia.")  # fmt: skip
+    nombres_calles = {k: v for c in camaras.camaras for k, v in c.calles.items()}
+    if not lista.vehiculos:
+        st.info("Todavía no hay vehículos de interés.")
+    for v in lista.vehiculos:
+        m = coinc[coinc["interes_id"] == v.id] if not coinc.empty else coinc
+        g = {"alta": "grave", "media": "moderado", "baja": "leve"}[v.prioridad]
+        with st.container(border=True, key=f"interes_{v.id}"):
+            a, b, c, d = st.columns([5, 1.3, 1.2, 1])
+            estado = "" if v.activa else " · <i>pausada</i>"
+            a.html(f'<span class="badge {g}">{v.prioridad}</span> <b>{v.nombre}</b>{estado}'
+                   f'<div class="ficha">{describir_interes(v, nombres_calles)}'
+                   f'{"<br>" + v.notas if v.notas else ""}</div>')  # fmt: skip
+            b.metric("Apariciones", len(m))
+            if c.button("Pausar" if v.activa else "Activar", key=f"act_{v.id}", width="stretch"):
+                otros = [x if x.id != v.id else x.model_copy(update={"activa": not x.activa})
+                         for x in lista.vehiculos]  # fmt: skip
+                _guardar_interes(lista, ruta, otros)
+            if d.button("Borrar", key=f"borrar_{v.id}", width="stretch"):
+                _guardar_interes(lista, ruta, [x for x in lista.vehiculos if x.id != v.id])
+            if len(m):
+                with st.expander(f"Ver {len(m)} aparición(es)"):
+                    _grilla_fichas(datos, camaras, m, f"int_{v.id}")
+    with st.expander("Agregar un vehículo de interés"):
+        c = datos.cruces
+        with st.form("nuevo_interes"):
+            a, b = st.columns([3, 2])
+            nombre = a.text_input("Nombre", placeholder="Ej.: moto negra por Rodríguez Peña")
+            prioridad = b.selectbox("Prioridad", list(PRIORIDADES), index=1,
+                                    format_func=PRIORIDADES.get)  # fmt: skip
+            a, b, d = st.columns(3)
+            tipos = a.multiselect("Tipo", sorted(c["clase_detalle"].dropna().unique()),
+                                  format_func=_tipo, placeholder="Cualquiera")  # fmt: skip
+            colores = b.multiselect("Color", sorted(c["color"].dropna().unique()),
+                                    placeholder="Cualquiera")  # fmt: skip
+            vel = d.number_input("Velocidad mínima (km/h)", 0, 150, 0, step=5)
+            a, b, d, e = st.columns(4)
+            calles = a.multiselect(
+                "Calle", sorted(nombres_calles), format_func=nombres_calles.get,
+                placeholder="Cualquiera",
+            )  # fmt: skip
+            barrios = b.multiselect("Barrio", sorted({x for cam in camaras.camaras
+                                                       for x in cam.barrios}),
+                                    placeholder="Cualquiera")  # fmt: skip
+            desde = d.time_input("Desde (hora)", dt.time(0, 0), step=60)
+            hasta = e.time_input("Hasta (hora)", dt.time(23, 59), step=60)
+            notas = st.text_input("Notas (opcional)")
+            if st.form_submit_button("Agregar", type="primary"):
+                if not nombre.strip():
+                    st.warning("Poné un nombre.")
+                    return
+                todo_el_dia = (desde, hasta) == (dt.time(0, 0), dt.time(23, 59))
+                nuevo = VehiculoInteres(
+                    id=_nuevo_id(nombre, lista), nombre=nombre.strip(), prioridad=prioridad,
+                    notas=notas, tipos=tipos, colores=colores, calles=calles, barrios=barrios,
+                    hora_desde=None if todo_el_dia else f"{desde:%H:%M}",
+                    hora_hasta=None if todo_el_dia else f"{hasta:%H:%M}",
+                    velocidad_min_kmh=float(vel),
+                    creado=dt.datetime.now().replace(microsecond=0),
+                )  # fmt: skip
+                _guardar_interes(lista, ruta, [*lista.vehiculos, nuevo])
 
 
 # --------------------------------------------------------------------------- main
@@ -980,7 +1133,8 @@ def barra_lateral(camaras: CamarasFile) -> None:
         "- Detecta y sigue vehículos y peatones\n"
         "- Cuenta por calle y sentido, y mide velocidad en km/h\n"
         "- Genera alertas con evidencia (foto y video)\n"
-        "- Permite buscar vehículos por tipo, color, calle y hora"
+        "- Permite buscar vehículos por tipo, color, calle y hora\n"
+        "- Avisa cuando aparece un vehículo de interés"
     )
     sb.caption(
         "Fuente: grabaciones procesadas (no es una transmisión en vivo). Los recortes son "
@@ -1009,11 +1163,23 @@ def main() -> None:
                 "(464 × 832) y uno de 25 s con el video original del iPhone. Ver limitaciones "
                 "en el README del repositorio.")  # fmt: skip
     barra_lateral(camaras)
-    al = alertas(datos, _limites(camaras))
+    ruta_interes = _ruta_interes(cfg)
+    try:
+        lista = load_interes(ruta_interes)
+    except Exception as e:  # noqa: BLE001 - un YAML mal editado no tira el dashboard
+        st.error(f"No se pudo leer {ruta_interes.name}: {e}")
+        lista = InteresFile()
+    coinc = coincidencias(datos.cruces, lista, camaras)
+    al = alertas(datos, _limites(camaras), coinc)
+    n_interes = coinc.drop_duplicates(["clip_id", "track_id"]).shape[0] if len(coinc) else 0
     vistas = {
         "control": ("Centro de control", lambda: centro_de_control(datos, camaras, al)),
         "alertas": (f"Alertas ({len(al)})", lambda: alertas_vista(datos, al)),
-        "buscador": ("Buscador", lambda: buscador(datos, camaras)),
+        "buscador": ("Buscador", lambda: buscador(datos, camaras, lista, ruta_interes)),
+        "interes": (
+            f"Vehículos de interés ({n_interes})",
+            lambda: vehiculos_interes(datos, camaras, lista, ruta_interes, coinc),
+        ),
         "seguir": ("Seguir un vehículo", lambda: seguir(datos)),
         "camaras": ("Cámaras", lambda: video(datos)),
         "estadisticas": ("Estadísticas", lambda: panorama(datos)),

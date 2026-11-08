@@ -32,6 +32,7 @@ VISTAS = {
     "control": ("vista=control", 1250),
     "alertas": ("vista=alertas", 1100),
     "buscador": ("vista=buscador&tipo=car&color=blanco&calle=av_cordoba", 1400),
+    "interes": ("vista=interes", 900),
     "panorama": ("vista=estadisticas", 1500),
     "seguir": ("vista=seguir&clip=muestra_2&vehiculo=134", 1750),
 }

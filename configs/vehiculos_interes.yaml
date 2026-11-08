@@ -1,0 +1,26 @@
+# Vehículos de interés: búsquedas guardadas. Cada vehículo procesado que cumple una
+# búsqueda activa genera una alerta (prioridad alta = grave, media = moderada,
+# baja = leve). Se editan desde el dashboard o a mano. Criterio vacío = cualquiera.
+
+vehiculos:
+- id: ejemplo_auto_rojo
+  nombre: 'Ejemplo: auto rojo de noche por Córdoba'
+  notas: Ejemplo para mostrar cómo funciona.
+  tipos:
+  - car
+  colores:
+  - rojo
+  calles:
+  - av_cordoba
+  hora_desde: '19:00'
+  hora_hasta: '23:59'
+  creado: '2026-11-08T12:00:00'
+- id: ejemplo_motos
+  nombre: 'Ejemplo: motos en San Nicolás'
+  prioridad: baja
+  notas: Ejemplo para mostrar cómo funciona.
+  tipos:
+  - motorcycle
+  barrios:
+  - San Nicolás
+  creado: '2026-11-08T12:00:00'

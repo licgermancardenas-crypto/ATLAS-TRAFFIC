@@ -150,8 +150,8 @@ def test_cargar_sin_datos(tmp_path):
 
 # --------------------------------------------------------------------------- dashboard real
 
-PESTANAS = ["Centro de control", "Alertas", "Buscador", "Seguir un vehículo", "Cámaras",
-            "Estadísticas"]  # fmt: skip
+PESTANAS = ["Centro de control", "Alertas", "Buscador", "Vehículos de interés",
+            "Seguir un vehículo", "Cámaras", "Estadísticas"]  # fmt: skip
 
 
 def _sin_contador(etiquetas):
