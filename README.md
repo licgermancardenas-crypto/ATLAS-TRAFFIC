@@ -73,6 +73,19 @@ grabaciones ya procesadas, no una transmisión en vivo, y lo dice en pantalla.
   exceso de velocidad y vehículos de interés en una sola lista,
   con gravedad (grave, moderada, leve) y filtros. Cada alerta tiene su evidencia en foto y
   video, y un link para seguir a ese vehículo.
+- **Asistente:** búsqueda escrita como en un chat, por ejemplo "auto rojo por Córdoba
+  alrededor de las 7:30 pm" o "busco sospechoso en bicicleta por avenida Córdoba".
+  - **Qué entiende:** tipo, color, calle, barrio, hora ("7:30 pm", "entre las 19 y las
+    20", "de noche"), fecha y velocidad.
+  - **Qué responde:** qué entendió, los resultados y, si no hay ninguno, lo más parecido
+    sin el horario.
+  - **Qué aclara:** lo que no puede saber (marca, patente, ropa, conductas), y que las
+    bicicletas se buscan como personas en la ciclovía, porque el detector no las
+    reconoce.
+  - **Cómo funciona:** es un intérprete de reglas (`src/atlas_traffic/lenguaje.py`), sin
+    servicios externos ni costo. Cada búsqueda se puede guardar como vehículo de interés.
+
+  ![Asistente](docs/assets/dashboard_asistente.jpg)
 - **Buscador:** encuentra vehículos por:
   - tipo, color y velocidad mínima;
   - calle, barrio, rango de horas del día y fechas;

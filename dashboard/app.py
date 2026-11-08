@@ -980,11 +980,108 @@ def _grilla_fichas(datos, camaras: CamarasFile, res: pd.DataFrame, prefijo: str)
                 vel = getattr(r, "velocidad_kmh", None)
                 vel = f" · {vel:.0f} km/h" if vel is not None and pd.notna(vel) else ""
                 calle = _nombre_calle(camaras, calle_de_linea(r.aproximacion))
+                color = f" · {r.color}" if isinstance(r.color, str) else ""
+                es_vehiculo = getattr(r, "clase", "vehiculo") == "vehiculo"
+                seguir_link = (f'<br><a href="{_link_seguir(r.clip_id, r.track_id)}" '
+                               f'target="_self">Seguir →</a>') if es_vehiculo else ""  # fmt: skip
                 st.html(f'<div class="ficha"><b>#{r.track_id} · {_tipo(r.clase_detalle)}</b>'
-                        f' · {r.color}{vel}<br>{_hora(getattr(r, "hora", None))}<br>{calle} · '
-                        f'{SENTIDOS.get(r.sentido, r.sentido)}<br>'
-                        f'<a href="{_link_seguir(r.clip_id, r.track_id)}" target="_self">'
-                        f'Seguir →</a></div>')  # fmt: skip
+                        f'{color}{vel}<br>{_hora(getattr(r, "hora", None))}<br>{calle} · '
+                        f'{SENTIDOS.get(r.sentido, r.sentido)}{seguir_link}</div>')  # fmt: skip
+
+
+# --------------------------------------------------------------------------- asistente
+
+
+def _horas_de(res: pd.DataFrame) -> str:
+    if "hora" not in res or res.empty:
+        return ""
+    h = pd.to_datetime(res["hora"]).dt.strftime("%d/%m %H:%M").drop_duplicates()
+    return ", ".join(h.head(4)) + ("…" if len(h) > 4 else "")
+
+
+def _respuesta(datos, camaras: CamarasFile, lista: InteresFile, ruta_interes: Path,
+               pregunta: str, k: int, completa: bool) -> None:  # fmt: skip
+    """Respuesta del asistente: qué entendió, avisos, resultados y alternativas."""
+    import dataclasses
+
+    from atlas_traffic.lenguaje import interpretar
+
+    c = datos.cruces
+    anio = int(pd.to_datetime(c["fecha"]).dt.year.max()) if "fecha" in c else None
+    i = interpretar(pregunta, camaras, sorted(c["aproximacion"].dropna().unique()),
+                    sorted(c["color"].dropna().unique()), anio)  # fmt: skip
+    res = consultar(c, i.filtro)
+    entendido = "; ".join(i.entendido) if i.entendido else "nada en particular"
+    st.markdown(f"**Entendí:** {entendido}.")
+    for a in i.avisos:
+        st.caption(f"⚠️ {a}")
+    if res.empty:
+        st.markdown("**No encontré ninguno.**")
+        # lo más parecido: sin el horario, después sin la fecha
+        relajar = [({"franja": None}, "el horario"),
+                   ({"franja": None, "fechas": None}, "el horario ni la fecha")]  # fmt: skip
+        for sin, motivo in relajar:
+            if all(getattr(i.filtro, x) is None for x in sin):
+                continue
+            alt_res = consultar(c, dataclasses.replace(i.filtro, **sin))
+            if not alt_res.empty:
+                st.markdown(f"Sin tener en cuenta {motivo} hay **{len(alt_res)}**: "
+                            f"{_horas_de(alt_res)}.")  # fmt: skip
+                res = alt_res
+                break
+        if res.empty:
+            return
+    else:
+        st.markdown(f"**Encontré {len(res)}** ({_horas_de(res)}).")
+    if not completa:
+        return
+    _grilla_fichas(datos, camaras, res.head(2 * COLUMNAS_GRILLA), f"chat{k}")
+    if len(res) > 2 * COLUMNAS_GRILLA:
+        st.caption(f"Muestro 12 de {len(res)}. El Buscador tiene todos, con descarga a CSV.")
+    if i.criterios is not None and st.button("Avisarme cuando aparezca otro así "
+                                             "(guardar como vehículo de interés)",
+                                             key=f"chat_guardar_{k}"):  # fmt: skip
+        nuevo = VehiculoInteres(id=_nuevo_id(pregunta, lista), nombre=pregunta.strip()[:80],
+                                prioridad="media", notas="Creado desde el asistente.",
+                                creado=dt.datetime.now().replace(microsecond=0),
+                                **i.criterios)  # fmt: skip
+        _guardar_interes(lista, ruta_interes, [*lista.vehiculos, nuevo])
+
+
+def asistente(datos, camaras: CamarasFile, lista: InteresFile, ruta_interes: Path) -> None:
+    from atlas_traffic.lenguaje import EJEMPLOS
+
+    if datos.cruces.empty:
+        st.info("No hay cruces consolidados: corré `atlas-traffic batch`.")
+        return
+    st.caption(
+        "Escribí lo que buscás como se lo dirías a un operador: tipo de vehículo, color, "
+        "calle o barrio, hora y fecha. El asistente explica qué entendió y qué no puede "
+        "saber (marca, patente, ropa, conductas)."
+    )
+    historial = st.session_state.setdefault("chat", [])
+    ejemplo = None
+    cols = st.columns(3)
+    for n, e in enumerate(EJEMPLOS):
+        if cols[n % 3].button(e, key=f"ejemplo_{n}", width="stretch"):
+            ejemplo = e
+    conversacion = st.container()
+    texto = st.chat_input("Ej.: auto rojo por Córdoba alrededor de las 7:30 pm",
+                          key="chat_texto")  # fmt: skip
+    pedido = texto or ejemplo
+    if pedido:
+        historial.append(pedido)
+        del historial[:-10]  # las últimas 10
+    with conversacion:
+        for k, pregunta in enumerate(historial):
+            with st.chat_message("user"):
+                st.write(pregunta)
+            with st.chat_message("assistant"):
+                _respuesta(datos, camaras, lista, ruta_interes, pregunta, k,
+                           completa=k == len(historial) - 1)  # fmt: skip
+        if historial and st.button("Empezar de nuevo", key="chat_limpiar"):
+            historial.clear()
+            st.rerun()
 
 
 # --------------------------------------------------------------------------- vehículos de interés
@@ -1134,7 +1231,8 @@ def barra_lateral(camaras: CamarasFile) -> None:
         "- Cuenta por calle y sentido, y mide velocidad en km/h\n"
         "- Genera alertas con evidencia (foto y video)\n"
         "- Permite buscar vehículos por tipo, color, calle y hora\n"
-        "- Avisa cuando aparece un vehículo de interés"
+        "- Avisa cuando aparece un vehículo de interés\n"
+        "- Entiende búsquedas escritas como en un chat (pestaña Asistente)"
     )
     sb.caption(
         "Fuente: grabaciones procesadas (no es una transmisión en vivo). Los recortes son "
@@ -1175,6 +1273,7 @@ def main() -> None:
     vistas = {
         "control": ("Centro de control", lambda: centro_de_control(datos, camaras, al)),
         "alertas": (f"Alertas ({len(al)})", lambda: alertas_vista(datos, al)),
+        "asistente": ("Asistente", lambda: asistente(datos, camaras, lista, ruta_interes)),
         "buscador": ("Buscador", lambda: buscador(datos, camaras, lista, ruta_interes)),
         "interes": (
             f"Vehículos de interés ({n_interes})",
